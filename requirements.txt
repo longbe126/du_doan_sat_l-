@@ -1,0 +1,9 @@
+numpy
+pandas
+geopandas
+rasterio
+scikit-learn
+xgboost
+plotly
+streamlit
+scipy
