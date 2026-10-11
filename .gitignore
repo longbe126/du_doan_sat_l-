@@ -5,3 +5,5 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .streamlit/secrets.toml
+/models/*.pkl
+/data/processed/demo_landslide_dataset.csv

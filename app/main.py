@@ -19,12 +19,13 @@ from components.theme import C, RISK_COLOR, HOURS, vn, hh, level_of
 from components.map_view import render_2d_workspace, render_3d_terrain, BASEMAPS
 from components import charts
 
-st.set_page_config(
-    page_title="Trung tâm giám sát nguy cơ sạt lở đất",
-    page_icon="⛰️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+if not st.session_state.get("_root_navigation", False):
+    st.set_page_config(
+        page_title="Trung tâm giám sát nguy cơ sạt lở đất",
+        page_icon="⛰️",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 DATA_MODE = "Dữ liệu mô phỏng"   # đổi thành nhãn khác khi ghép với dữ liệu thật
 
