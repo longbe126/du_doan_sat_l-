@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 
 from .theme import C, RISK_COLOR, base_layout  # RISK_COLOR giữ lại để main.py cũ vẫn import được
 
-BASEMAPS = ["Tối", "Vệ tinh", "Địa hình", "Ngoại tuyến"]
+BASEMAPS = ["Bản đồ", "Vệ tinh", "Địa hình"]
 
 _ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 _OTM = "https://a.tile.opentopomap.org/{z}/{x}/{y}.png"
@@ -118,16 +118,19 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
             customdata=df[["score", "rain", "slope", "elev", "code", "name"]],
             hoverinfo="skip"
         ))
-        fig.add_trace(go.Scattermap(
-            lat=df["lat"], lon=df["lon"], mode="markers+text",
-            marker=dict(size=14, color=[RISK_COLOR[l] for l in df["level"]]),
-            text=df["name"], textposition="top center", textfont=dict(size=11, color="#e8f0f5"),
-            customdata=df[["score", "rain", "slope", "elev", "code", "name"]],
-            hovertemplate=("<b>%{text}</b> [%{customdata[4]}]<br>"
-                           "Điểm nguy cơ: <b>%{customdata[0]:.3f}</b><br>"
-                           "Mưa 24 giờ: %{customdata[1]:.1f} mm<br>"
-                           "Độ dốc: %{customdata[2]:.1f}°<br>"
-                           "Độ cao: %{customdata[3]:.0f} m<extra></extra>")))
+        for row in df.itertuples(index=False):
+            fig.add_trace(go.Scattermap(
+                lat=[row.lat], lon=[row.lon], mode="markers+text",
+                name="area-markers",
+                marker=dict(size=14, color=str(RISK_COLOR[row.level])),
+                text=[row.name], textposition="top center",
+                textfont=dict(size=11, color="#e8f0f5"),
+                customdata=[[row.score, row.rain, row.slope, row.elev, row.code, row.name]],
+                hovertemplate=("<b>%{text}</b> [%{customdata[4]}]<br>"
+                               "Điểm nguy cơ: <b>%{customdata[0]:.3f}</b><br>"
+                               "Mưa 24 giờ: %{customdata[1]:.1f} mm<br>"
+                               "Độ dốc: %{customdata[2]:.1f}°<br>"
+                               "Độ cao: %{customdata[3]:.0f} m<extra></extra>")))
 
         if selected_area and selected_area in df["name"].values:
             sel = df[df["name"] == selected_area].iloc[0]
@@ -151,20 +154,16 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
     layers = []
     style = "white-bg"
     shade_opacity = 0.0
-    if map_style == "Tối":
-        style, shade_opacity = "carto-darkmatter", 0.50
+    if map_style == "Bản đồ":
+        style, shade_opacity = "carto-darkmatter", 0.12
     elif map_style == "Vệ tinh":
         layers.append(dict(sourcetype="raster", source=[_ESRI], below="traces", opacity=1,
                            sourceattribution="Esri, Maxar, Earthstar Geographics"))
     elif map_style == "Địa hình":
         layers.append(dict(sourcetype="raster", source=[_OTM], below="traces", opacity=1,
                            sourceattribution="© OpenTopoMap (CC-BY-SA), © OpenStreetMap"))
-    else:  # Ngoại tuyến: không cần mạng, tự phủ nền tối
-        big = {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [[
-            [west - 4, south - 4], [east + 4, south - 4], [east + 4, north + 4], [west - 4, north + 4],
-            [west - 4, south - 4]]]}}
-        layers.append(dict(sourcetype="geojson", source=big, type="fill", color="#0b1620", opacity=1, below="traces"))
-        shade_opacity = 0.95
+    else:
+        style, shade_opacity = "carto-positron", 0.18
     if shade_opacity > 0:
         layers.append(dict(sourcetype="image", source=hillshade_uri(base), below="traces", opacity=shade_opacity,
                            coordinates=[[west, north], [east, north], [east, south], [west, south]]))
@@ -206,8 +205,18 @@ def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, heig
             x=df["lon"], y=df["lat"], z=zs, mode="markers+text", text=df["name"], textposition="top center",
             textfont=dict(size=11, color="#f1f5f9", family="Be Vietnam Pro, sans-serif"),
             marker=dict(size=6, color=[RISK_COLOR[l] for l in df["level"]], line=dict(color="#ffffff", width=1.5)),
-            customdata=df["name"],
-            hoverinfo="text"))
+            customdata=np.column_stack([
+                df["name"], df["code"], df["score"], df["rain"], df["slope"], df["elev"], df["cover"], df["level"]
+            ]),
+            hovertemplate=(
+                "<b>%{customdata[0]}</b> [%{customdata[1]}]<br>"
+                "Mức nguy cơ: <b>%{customdata[7]}</b><br>"
+                "Điểm nguy cơ: %{customdata[2]:.3f}<br>"
+                "Mưa 24 giờ: %{customdata[3]:.1f} mm<br>"
+                "Độ dốc: %{customdata[4]:.1f}°<br>"
+                "Độ cao: %{customdata[5]:.0f} m<br>"
+                "Lớp phủ: %{customdata[6]}<extra></extra>")))
+
         hx, hy, hz = [], [], []
         head_x, head_y, head_z = [], [], []
         for r, z0 in zip(df.itertuples(), zs):
@@ -244,6 +253,7 @@ def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, heig
         **layout_args,
         showlegend=False,
         clickmode="event+select",
+        dragmode="orbit",
         scene=dict(
             xaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
