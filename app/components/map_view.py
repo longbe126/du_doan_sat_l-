@@ -82,7 +82,7 @@ def _map_scale(thr):
 
 def _terrain_scale(thr):
     lo, hi = thr
-    a, b, c = "#2E6B58", "#B98B2E", "#D2452F"
+    a, b, c = "#2E6B58", "#C6922E", "#C83228"
     return [[0.0, a], [lo, a], [lo, b], [hi, b], [hi, c], [1.0, c]]
 
 
@@ -90,7 +90,8 @@ def _terrain_scale(thr):
 # Bản đồ 2D
 # ----------------------------------------------------------------------------
 def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
-                        show_risk_grid=True, show_hist=True, show_areas=True, height=600):
+                        show_risk_grid=True, show_hist=True, show_areas=True, height=600,
+                        selected_area: str | None = None):
     lat, lon = np.asarray(base["lat"], float), np.asarray(base["lon"], float)
     west, east, south, north = lon.min(), lon.max(), lat.min(), lat.max()
     fig = go.Figure()
@@ -108,21 +109,44 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
             lat=ev["lat"], lon=ev["lon"], mode="markers",
             marker=dict(size=5, color="#c9d6df", opacity=0.9),
             text=(ev["id"].astype(str) + "<br>" + ev["date"].astype(str) + "<br>" + ev["cause"].astype(str)),
-            hovertemplate="<b>Sạt lở đã ghi nhận</b><br>%{text}<extra></extra>"))
+            hovertemplate="<b>Sạt lở lịch sử (mô phỏng)</b><br>%{text}<extra></extra>"))
 
     if show_areas:
-        fig.add_trace(go.Scattermap(lat=df["lat"], lon=df["lon"], mode="markers",
-                                    marker=dict(size=21, color=C["bg"]), hoverinfo="skip"))
+        fig.add_trace(go.Scattermap(
+            lat=df["lat"], lon=df["lon"], mode="markers",
+            marker=dict(size=21, color=C["bg"]),
+            customdata=df[["score", "rain", "slope", "elev", "code", "name"]],
+            hoverinfo="skip"
+        ))
         fig.add_trace(go.Scattermap(
             lat=df["lat"], lon=df["lon"], mode="markers+text",
             marker=dict(size=14, color=[RISK_COLOR[l] for l in df["level"]]),
             text=df["name"], textposition="top center", textfont=dict(size=11, color="#e8f0f5"),
-            customdata=df[["score", "rain", "slope", "elev", "code"]],
+            customdata=df[["score", "rain", "slope", "elev", "code", "name"]],
             hovertemplate=("<b>%{text}</b> [%{customdata[4]}]<br>"
                            "Điểm nguy cơ: <b>%{customdata[0]:.3f}</b><br>"
                            "Mưa 24 giờ: %{customdata[1]:.1f} mm<br>"
                            "Độ dốc: %{customdata[2]:.1f}°<br>"
                            "Độ cao: %{customdata[3]:.0f} m<extra></extra>")))
+
+        if selected_area and selected_area in df["name"].values:
+            sel = df[df["name"] == selected_area].iloc[0]
+            # Vòng hào quang sáng màu cyan nổi bật xung quanh điểm được chọn
+            fig.add_trace(go.Scattermap(
+                lat=[sel["lat"]], lon=[sel["lon"]], mode="markers",
+                marker=dict(size=34, color="rgba(14, 165, 233, 0.40)"),
+                hoverinfo="skip"
+            ))
+            fig.add_trace(go.Scattermap(
+                lat=[sel["lat"]], lon=[sel["lon"]], mode="markers",
+                marker=dict(size=23, color="rgba(56, 189, 248, 0.85)"),
+                hoverinfo="skip"
+            ))
+            fig.add_trace(go.Scattermap(
+                lat=[sel["lat"]], lon=[sel["lon"]], mode="markers",
+                marker=dict(size=14, color=RISK_COLOR[sel["level"]]),
+                hoverinfo="skip"
+            ))
 
     layers = []
     style = "white-bg"
@@ -145,7 +169,7 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
         layers.append(dict(sourcetype="image", source=hillshade_uri(base), below="traces", opacity=shade_opacity,
                            coordinates=[[west, north], [east, north], [east, south], [west, south]]))
 
-    fig.update_layout(**base_layout(height), showlegend=False)
+    fig.update_layout(**base_layout(height), showlegend=False, clickmode="event+select")
     fig.update_layout(map=dict(style=style, zoom=9.7, layers=layers,
                                center=dict(lat=float((south + north) / 2), lon=float((west + east) / 2))))
     return fig
@@ -154,14 +178,15 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
 # ----------------------------------------------------------------------------
 # Địa hình 3D
 # ----------------------------------------------------------------------------
-def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, height=600):
+def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, height=720,
+                      selected_area: str | None = None):
     lat, lon = np.asarray(base["lat"], float), np.asarray(base["lon"], float)
-    elev = _smooth(np.asarray(base["elev"], float), 4)   # chỉ làm mượt để hiển thị; số liệu tính toán không đổi
+    elev = _smooth(np.asarray(base["elev"], float), 4)
     risk_s = _smooth(np.asarray(risk, float), 3) if np.shape(risk) == elev.shape else risk
 
     fig = go.Figure(go.Surface(
         x=lon, y=lat, z=elev, surfacecolor=risk_s, cmin=0, cmax=1, colorscale=_terrain_scale(thr),
-        showscale=False, lighting=dict(ambient=0.55, diffuse=0.8, roughness=0.9, specular=0.05, fresnel=0.1),
+        showscale=False, lighting=dict(ambient=0.65, diffuse=0.85, roughness=0.7, specular=0.08, fresnel=0.15),
         contours=dict(z=dict(show=True, start=0, end=float(np.ceil(elev.max() / 100) * 100), size=250,
                              color="rgba(226,232,240,0.16)", width=1)),
         hovertemplate=("Kinh độ %{x:.3f}<br>Vĩ độ %{y:.3f}<br>Độ cao %{z:.0f} m<br>"
@@ -171,32 +196,62 @@ def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, heig
         ev = base["events"]
         fig.add_trace(go.Scatter3d(
             x=ev["lon"], y=ev["lat"], z=_sample(base, elev, ev["lat"], ev["lon"]) + 25, mode="markers",
-            marker=dict(size=3, color="#c9d6df"),
+            marker=dict(size=4, color="#ffffff", opacity=0.9),
             text=(ev["id"].astype(str) + "<br>" + ev["date"].astype(str)),
-            hovertemplate="<b>Sạt lở đã ghi nhận</b><br>%{text}<extra></extra>"))
+            hovertemplate="<b>Sạt lở lịch sử (mô phỏng)</b><br>%{text}<extra></extra>"))
 
     if show_areas:
         zs = _sample(base, elev, df["lat"], df["lon"]) + 40
         fig.add_trace(go.Scatter3d(
             x=df["lon"], y=df["lat"], z=zs, mode="markers+text", text=df["name"], textposition="top center",
-            textfont=dict(size=11, color="#e8f0f5"),
-            marker=dict(size=5, color=[RISK_COLOR[l] for l in df["level"]], line=dict(color=C["bg"], width=2)),
+            textfont=dict(size=11, color="#f1f5f9", family="Be Vietnam Pro, sans-serif"),
+            marker=dict(size=6, color=[RISK_COLOR[l] for l in df["level"]], line=dict(color="#ffffff", width=1.5)),
+            customdata=df["name"],
             hoverinfo="text"))
-        hx, hy, hz = [], [], []   # cột báo hiệu dựng lên từ các khu vực mức cao
+        hx, hy, hz = [], [], []
+        head_x, head_y, head_z = [], [], []
         for r, z0 in zip(df.itertuples(), zs):
             if r.level == "Cao":
                 hx += [r.lon, r.lon, None]
                 hy += [r.lat, r.lat, None]
                 hz += [z0, z0 + 520, None]
+                head_x.append(r.lon)
+                head_y.append(r.lat)
+                head_z.append(z0 + 520)
         if hx:
             fig.add_trace(go.Scatter3d(x=hx, y=hy, z=hz, mode="lines",
-                                       line=dict(color=C["high"], width=5), hoverinfo="skip"))
+                                       line=dict(color="#ef4444", width=5), hoverinfo="skip"))
+            fig.add_trace(go.Scatter3d(x=head_x, y=head_y, z=head_z, mode="markers",
+                                       marker=dict(size=7, color="#ef4444", line=dict(color="#ffffff", width=1.5)),
+                                       hoverinfo="skip"))
 
-    axis = dict(showbackground=False, gridcolor=C["line"], zerolinecolor=C["line"], linecolor=C["line2"],
-                tickfont=dict(size=10, color=C["muted"]), title_font=dict(color=C["muted"], size=11))
+        if selected_area and selected_area in df["name"].values:
+            sel = df[df["name"] == selected_area].iloc[0]
+            sel_z = float(_sample(base, elev, [sel["lat"]], [sel["lon"]])[0]) + 40
+            fig.add_trace(go.Scatter3d(
+                x=[sel["lon"], sel["lon"]],
+                y=[sel["lat"], sel["lat"]],
+                z=[sel_z, sel_z + 650],
+                mode="lines+markers",
+                line=dict(color="#38bdf8", width=7),
+                marker=dict(size=[6, 11], color=["#38bdf8", "#ffffff"]),
+                hoverinfo="skip"
+            ))
+
+    layout_args = base_layout(height)
+    layout_args["margin"] = dict(l=0, r=0, t=0, b=0)
     fig.update_layout(
-        **base_layout(height), showlegend=False,
-        scene=dict(xaxis=dict(title="Kinh độ", **axis), yaxis=dict(title="Vĩ độ", **axis),
-                   zaxis=dict(title="Độ cao (m)", **axis), aspectmode="manual",
-                   aspectratio=dict(x=1, y=1, z=0.32), camera=dict(eye=dict(x=0.95, y=-1.05, z=0.72), center=dict(x=0, y=0, z=-0.12))))
+        **layout_args,
+        showlegend=False,
+        clickmode="event+select",
+        scene=dict(
+            xaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
+            yaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
+            zaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
+            aspectmode="manual",
+            aspectratio=dict(x=1.35, y=1.35, z=0.38),
+            camera=dict(eye=dict(x=1.1, y=-1.35, z=0.8), center=dict(x=0, y=0, z=-0.1)),
+            bgcolor="rgba(0,0,0,0)"
+        )
+    )
     return fig

@@ -7,3 +7,14 @@ __pycache__/
 .streamlit/secrets.toml
 /models/*.pkl
 /data/processed/demo_landslide_dataset.csv
+/data/*.db
+/data/*.sqlite
+/data/*.sqlite3
+/data/processed/*.csv
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+.env
+.env.*
+*.log

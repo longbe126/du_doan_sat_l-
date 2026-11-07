@@ -1,15 +1,25 @@
 
+import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import roc_auc_score
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.simulation.rules import (  # noqa: E402
+    LANDCOVER_CLASSES, LANDCOVER_PRIOR, NOISE_SD, deterministic_score,
+)
 
 
 SEED = 42
 N_SAMPLES = 5000
 
-ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "processed" / "demo_dataset.csv"
+META_OUTPUT = ROOT / "data" / "processed" / "demo_dataset_meta.json"
 
 
 def generate_dataset(n_samples=N_SAMPLES, seed=SEED):
@@ -20,24 +30,11 @@ def generate_dataset(n_samples=N_SAMPLES, seed=SEED):
     rainfall = rng.gamma(shape=2.0, scale=60.0, size=n_samples)
     soil_moisture = rng.uniform(0.05, 0.95, n_samples)
 
-    landcover = rng.choice(
-        ["forest", "agriculture", "bare", "urban"],
-        size=n_samples,
-        p=[0.55, 0.25, 0.10, 0.10],
-    )
+    landcover = rng.choice(LANDCOVER_CLASSES, size=n_samples, p=LANDCOVER_PRIOR)
 
-    # Quy luật tạo nhãn MÔ PHỎNG, không phải công thức địa chất đã kiểm chứng.
-    score = (
-        -4.0
-        + 0.075 * slope
-        + 0.006 * rainfall
-        + 1.2 * soil_moisture
-        + 0.0002 * elevation
-        + 0.8 * (landcover == "bare")
-        + 0.25 * (landcover == "agriculture")
-        - 0.3 * (landcover == "forest")
-        + rng.normal(0, 0.8, n_samples)
-    )
+    # Quy luật tạo nhãn MÔ PHỎNG (dùng chung với bản đồ), không phải công thức địa chất đã kiểm chứng.
+    base_score = deterministic_score(slope, elevation, rainfall, soil_moisture, landcover)
+    score = base_score + rng.normal(0, NOISE_SD, n_samples)
 
     probability = 1 / (1 + np.exp(-score))
     landslide = rng.binomial(1, probability)
@@ -52,7 +49,21 @@ def generate_dataset(n_samples=N_SAMPLES, seed=SEED):
         "data_source": "SIMULATED",
     })
 
+    # Gắn điểm không nhiễu để tính "trần" AUC; không đưa vào bảng dữ liệu.
+    df.attrs["base_score"] = base_score
     return df
+
+
+def reference_metadata(df, seed=SEED):
+    """Trần AUC: mô hình biết đúng quy luật nhưng không biết nhiễu thì chỉ đạt tới mức này."""
+    return {
+        "generator": "scripts/generate_demo_data.py",
+        "seed": seed,
+        "n_rows": int(len(df)),
+        "noise_sd": NOISE_SD,
+        "positive_rate": float(df["landslide"].mean()),
+        "ceiling_roc_auc": float(roc_auc_score(df["landslide"], df.attrs["base_score"])),
+    }
 
 
 if __name__ == "__main__":
@@ -60,6 +71,11 @@ if __name__ == "__main__":
 
     df = generate_dataset()
     df.to_csv(OUTPUT, index=False)
+
+    meta = reference_metadata(df)
+    with open(META_OUTPUT, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    print(f"Trần ROC-AUC theo quy luật sinh dữ liệu: {meta['ceiling_roc_auc']:.3f}")
 
     print(f"Đã tạo: {OUTPUT}")
     print(f"Số dòng: {len(df)}")
