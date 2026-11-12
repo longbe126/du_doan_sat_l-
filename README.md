@@ -1,6 +1,8 @@
 # Hệ thống giám sát và mô phỏng nguy cơ sạt lở đất
 
-Đồ án xây dựng một hệ thống thử nghiệm để minh họa cách kết hợp dữ liệu địa hình, dữ liệu mưa và học máy trong việc phân tích nguy cơ sạt lở. Hệ thống gồm bảng điều khiển Streamlit, giao diện web React hiển thị bản đồ 2D/địa hình 3D, dịch vụ API FastAPI và quy trình huấn luyện, đánh giá mô hình bằng scikit-learn và XGBoost.
+Đồ án xây dựng một ứng dụng Streamlit để minh họa cách kết hợp dữ liệu địa hình, dữ liệu mưa và học máy trong việc phân tích nguy cơ sạt lở. Ứng dụng có các trang tổng quan, lịch sử sự kiện và đánh giá mô hình; phần xử lý dữ liệu và huấn luyện được viết bằng Python, scikit-learn và XGBoost.
+
+**Cách chạy ứng dụng:** dùng Streamlit thông qua `streamlit_app.py`.
 
 > **Cảnh báo về dữ liệu:** Đây là sản phẩm nghiên cứu/mô phỏng, không phải hệ thống cảnh báo thiên tai vận hành thực tế. Địa hình, mưa, độ ẩm, lớp phủ, các điểm khu vực, sự kiện lịch sử và nhãn dùng để huấn luyện hiện được tạo theo quy tắc mô phỏng cố định. Tên địa danh chỉ dùng để minh họa, không xác nhận vị trí hay sự kiện quan trắc. Các điểm số không thể hiện xác suất hoặc kết luận địa chất đã được kiểm chứng. Không dùng kết quả để ra quyết định an toàn, sơ tán hay ứng phó khẩn cấp.
 
@@ -9,8 +11,8 @@
 - Tổ chức một quy trình minh họa từ sinh dữ liệu, huấn luyện và đánh giá mô hình đến hiển thị kết quả trên bản đồ.
 - So sánh một mô hình tuyến tính với hai mô hình tổ hợp cây trên cùng bộ đặc trưng.
 - Cho phép thay đổi cường độ mưa và mốc phân loại để quan sát cách điểm nguy cơ mô phỏng thay đổi theo thời gian.
-- Cung cấp giao diện trực quan để xem địa hình, phân bố mức nguy cơ, các khu vực minh họa, diễn biến 24 giờ và báo cáo đánh giá mô hình.
-- Tách phần tính toán Python khỏi giao diện React thông qua API FastAPI; đồng thời cung cấp giao diện nhiều trang thuần Streamlit.
+- Cung cấp giao diện Streamlit nhiều trang để xem địa hình, phân bố mức nguy cơ, các khu vực minh họa, diễn biến 24 giờ và báo cáo đánh giá mô hình.
+- Giữ luồng chạy và thao tác trong một ứng dụng Streamlit duy nhất.
 
 ## Luồng hoạt động tổng thể
 
@@ -40,20 +42,20 @@ Hiển thị bản đồ, chỉ số, biểu đồ và sự kiện suy ra từ k
 4. **Khởi động ứng dụng:** `app/core/model_loader.py` nạp mô hình được chọn. Nếu thiếu báo cáo hoặc file mô hình tương ứng, loader gọi lại bước huấn luyện; vì vậy CSV dữ liệu cần tồn tại trước.
 5. **Tạo bản đồ nền:** `app/core/data_engine.py` tạo lưới 72 × 72 gồm cao độ, độ dốc, lượng mưa nền, độ ẩm và lớp phủ. Các giá trị là dữ liệu mô phỏng có seed cố định.
 6. **Chạy kịch bản:** mỗi lần người dùng chọn giờ hoặc điều chỉnh tham số, ứng dụng thay đổi lượng mưa đầu vào, chạy mô hình trên các ô lưới, sau đó tổng hợp điểm và phân loại theo ngưỡng.
-7. **Trình bày kết quả:** Streamlit tính toán trực tiếp bằng các module Python; giao diện React nhận dữ liệu qua FastAPI. Hai giao diện dùng chung logic mô phỏng và pipeline mô hình.
+7. **Trình bày kết quả:** các trang Streamlit gọi trực tiếp những module Python dùng chung để hiển thị bản đồ, chỉ số, biểu đồ và sự kiện của kịch bản.
 
 ## Chức năng chính
 
-### Bảng điều khiển giám sát
+### Trang tổng quan giám sát
 
-- Hiển thị bản đồ lưới và địa hình mô phỏng, hỗ trợ chuyển giữa chế độ 2D và 3D ở giao diện React.
+- Hiển thị bản đồ lưới và địa hình mô phỏng trong giao diện Streamlit.
 - Tổng hợp điểm nguy cơ, mức thấp/trung bình/cao, lượng mưa, khu vực có điểm cao và thay đổi so với mốc thời gian trước.
 - Mô phỏng kịch bản mưa trong 24 giờ. Hệ số mưa tăng theo thời gian; người dùng có thể thay đổi cường độ kịch bản và các ngưỡng phân loại.
 - Hiển thị chuỗi thời gian, thông tin khu vực và các mốc sự kiện được suy ra từ thay đổi trong mô phỏng.
 
 ### Tra cứu sự kiện
 
-Trang lịch sử trình bày danh sách và thống kê sự kiện minh họa, có thể tìm kiếm, lọc theo nguyên nhân và sắp xếp theo thời gian, địa điểm hoặc độ cao. Dữ liệu sự kiện mặc định được sinh trong môi trường mô phỏng; API cũng có endpoint đọc tối đa 50 bản ghi từ SQLite `data/landslide.db` nếu cơ sở dữ liệu đó được cung cấp.
+Trang lịch sử trình bày danh sách và thống kê sự kiện, có thể tìm kiếm, lọc theo nguyên nhân và sắp xếp theo thời gian, địa điểm hoặc độ cao. Khi có `data/landslide.db`, trang đọc sự kiện trực tiếp từ SQLite; nếu không có dữ liệu phù hợp, trang dùng bộ sự kiện mô phỏng để minh họa.
 
 ### Đánh giá mô hình
 
@@ -112,7 +114,7 @@ Khi chạy bản đồ, mô hình được chọn nhận năm đặc trưng củ
 
 - Lưới đầu vào có 72 × 72 ô. Để hiển thị lớp lưới gọn hơn, mỗi khối 4 × 4 ô được lấy trung bình, tạo lưới tổng hợp 18 × 18.
 - Điểm của một khu vực minh họa là trung bình đầu ra trên cửa sổ 5 × 5 ô quanh tọa độ khu vực.
-- Hai ngưỡng do giao diện/API cung cấp chia điểm thành mức thấp, trung bình và cao. Đây là nhãn trực quan theo ngưỡng cấu hình, không phải cấp cảnh báo được cơ quan chuyên môn ban hành.
+- Hai ngưỡng do người dùng đặt trên giao diện chia điểm thành mức thấp, trung bình và cao. Đây là nhãn trực quan theo ngưỡng cấu hình, không phải cấp cảnh báo được cơ quan chuyên môn ban hành.
 - Trong kịch bản 24 giờ, hệ số nhân mưa tại giờ `h` được tính theo `r(h) = 0.30 + 0.70 × (h / 24)^1.3`, với `h` từ 0 đến 24. Mưa nền tại mỗi ô được nhân với hệ số kịch bản và đầu vào mưa là biến đổi chính trong mô phỏng; các lớp đặc trưng nền khác được giữ nguyên.
 - So sánh kết quả hai giờ liên tiếp để tạo chênh lệch điểm, phát hiện đổi mức và ghi nhận các mốc vượt ngưỡng mưa. Đây là sự kiện của kịch bản, không phải cảnh báo thời tiết trực tiếp.
 
@@ -127,7 +129,7 @@ Khi chạy bản đồ, mô hình được chọn nhận năm đặc trưng củ
 
 Các chỉ số hiện phản ánh hiệu năng trên tập demo và cách chia tập được ghi trong báo cáo. Có một giới hạn cần lưu ý khi đọc kết quả hiện tại: code tạo holdout 80/20 nhưng gọi `cross_validate` trên toàn bộ `X, y`, tức các dòng thuộc holdout cũng tham gia các vòng kiểm định chéo dùng để chọn mô hình. Chúng không được dùng để fit pipeline cuối trên train, nhưng holdout không còn hoàn toàn độc lập với bước chọn mô hình; vì vậy nên xem các chỉ số này là kết quả tham khảo, không phải ước lượng cuối cùng không thiên lệch. Để đánh giá nghiêm ngặt hơn, cần tách riêng tập test cuối cùng khỏi mọi bước lựa chọn mô hình/siêu tham số hoặc dùng quy trình nested cross-validation. Bộ dữ liệu demo hiện không có nhóm không gian, nên mặc định dùng chia phân tầng ngẫu nhiên; các điểm có liên hệ không gian không được giữ tách biệt giữa train và test. Code hỗ trợ chia theo `block_id`, `spatial_block` hoặc `group` khi các cột đó có trong dữ liệu, nhưng khả năng này chưa đồng nghĩa với việc đã có kiểm định không gian trên dữ liệu thực.
 
-## Kiến trúc
+## Kiến trúc ứng dụng Streamlit
 
 ```text
 scripts/generate_demo_data.py
@@ -137,40 +139,30 @@ data/processed/demo_dataset.csv ──► app/core/train_models.py
                                           │
                             models/*.pkl + reports/evaluation.json
                                           │
-                 ┌────────────────────────┴────────────────────┐
-                 ▼                                             ▼
-       Ứng dụng Streamlit                          FastAPI (server/main.py)
-       streamlit_app.py                             /api/*
-                                                               │
-                                                     Giao diện React + Three.js
+                                          ▼
+                              streamlit_app.py
+                               ┌──────┼──────┐
+                               ▼      ▼      ▼
+                           Tổng quan Lịch sử Đánh giá AI
+                               │
+                               ▼
+                  app/core/data_engine.py
+                  tính toán và tạo dữ liệu bản đồ
 ```
 
 ### Các thành phần chính
 
-- `streamlit_app.py`: điều hướng các trang Streamlit: tổng quan, lịch sử sạt lở và đánh giá AI.
-- `app/main.py`, `app/pages/`: nội dung bảng điều khiển và các trang chức năng Streamlit.
+- `streamlit_app.py`: entry point duy nhất cần dùng để chạy ứng dụng Streamlit; điều hướng các trang tổng quan, lịch sử sạt lở và đánh giá AI.
+- `app/main.py`, `app/pages/`: nội dung trang tổng quan và các trang chức năng Streamlit.
 - `app/core/data_engine.py`: tạo lưới địa hình/lớp phủ/mưa mô phỏng và tính điểm bằng mô hình đã huấn luyện.
 - `app/core/train_models.py`: tiền xử lý, huấn luyện, kiểm định và xuất báo cáo.
 - `app/core/model_loader.py`: nạp mô hình được chọn; tự gọi pipeline huấn luyện khi chưa có mô hình hoặc báo cáo phù hợp.
-- `server/main.py`: API FastAPI cho dữ liệu nền, địa hình, mô phỏng, chuỗi 24 giờ, báo cáo mô hình và sự kiện SQLite.
-- `frontend/`: ứng dụng React/TypeScript, Zustand quản lý trạng thái, Three.js/React Three Fiber hiển thị địa hình 3D.
+- `app/components/`: các thành phần giao diện và trực quan hóa dùng trong ứng dụng Streamlit.
 - `data/processed/`, `models/`, `reports/`: dữ liệu demo, pipeline mô hình và báo cáo huấn luyện.
-
-### API chính
-
-| Phương thức | Endpoint | Nội dung |
-| --- | --- | --- |
-| `GET` | `/api/health` | Trạng thái API, tên mô hình, kích thước lưới và thông tin cơ sở dữ liệu |
-| `GET` | `/api/base` | Khu vực, sự kiện mô phỏng, metadata và phạm vi tọa độ |
-| `GET` | `/api/terrain` | Cao độ, độ dốc và tọa độ lưới cho bản đồ |
-| `GET` | `/api/simulation` | Kết quả mô phỏng tại một giờ với các tham số kịch bản |
-| `GET` | `/api/series` | Chuỗi kết quả mô phỏng từ giờ 0 đến giờ 24 |
-| `GET` | `/api/models` | Báo cáo đánh giá mô hình |
-| `GET` | `/api/database/events` | Tối đa 50 sự kiện SQLite nếu cơ sở dữ liệu tồn tại |
 
 ## Cài đặt và chạy
 
-Yêu cầu: Python và Node.js/npm. Các lệnh dưới đây dùng PowerShell trên Windows.
+Yêu cầu: Python. Các lệnh dưới đây dùng PowerShell trên Windows.
 
 ### 1. Cài đặt môi trường Python
 
@@ -199,25 +191,11 @@ Huấn luyện ba mô hình và tạo báo cáo:
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-### 4. Chạy giao diện React và API FastAPI
-
-Build giao diện React trước để FastAPI phục vụ nội dung trong `frontend/dist`:
-
-```powershell
-cd frontend
-npm install
-npm run build
-cd ..
-.\.venv\Scripts\python.exe run_app.py
-```
-
-Ứng dụng React và API mặc định chạy tại <http://localhost:8000>. Có thể chạy frontend ở chế độ phát triển riêng bằng `cd frontend` rồi `npm run dev`; khi đó cần đảm bảo cấu hình API trong frontend trỏ tới backend đang chạy.
-
 ## Công nghệ sử dụng
 
-- **Backend/ML:** Python, NumPy, pandas, scikit-learn, XGBoost, FastAPI, Uvicorn.
-- **Giao diện phân tích:** Streamlit, Plotly.
-- **Giao diện web:** React, TypeScript, Vite, Three.js, React Three Fiber, Zustand, Tailwind CSS.
+- **Ứng dụng:** Streamlit, Python.
+- **Xử lý dữ liệu và học máy:** NumPy, pandas, scikit-learn, XGBoost.
+- **Biểu đồ:** Plotly.
 - **Lưu trữ sự kiện tùy chọn:** SQLite.
 
 ## Mức độ hoàn thiện hiện tại
@@ -227,8 +205,7 @@ cd ..
 | Hạng mục | Trạng thái hiện tại |
 | --- | --- |
 | Luồng sinh dữ liệu, huấn luyện, so sánh và lưu mô hình | Có thể chạy end-to-end trên bộ dữ liệu tổng hợp |
-| Giao diện theo dõi và kịch bản mưa | Có bản Streamlit và bản React/3D; thể hiện kết quả mô hình trên dữ liệu mô phỏng |
-| API backend | Có các endpoint sức khỏe, dữ liệu nền, địa hình, mô phỏng, chuỗi 24 giờ, báo cáo và sự kiện SQLite |
+| Giao diện theo dõi và kịch bản mưa | Ứng dụng Streamlit nhiều trang; thể hiện kết quả mô hình trên dữ liệu mô phỏng |
 | Đánh giá mô hình | Có tập holdout, kiểm định chéo và nhiều chỉ số; cấu hình chia theo không gian chỉ được kích hoạt khi dữ liệu có cột nhóm |
 | Dữ liệu thực địa đã xác minh | Chưa có trong luồng demo hiện tại |
 | Dự báo thời tiết / cảm biến thời gian thực | Chưa tích hợp; kịch bản mưa là tham số do người dùng đặt |
