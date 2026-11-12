@@ -1,9 +1,9 @@
 import { create } from "zustand";
-import { BaseData, SimulationData, TerrainData, TimelineItem } from "../types";
+import { BaseData, SeriesData, SimulationData, TerrainData, TimelineItem } from "../types";
 import { fetchBase, fetchModelsReport, fetchSeries, fetchSimulation, fetchTerrain } from "../services/api";
 
 interface AppState {
-  activeTab: "overview" | "ai";
+  activeTab: "overview" | "history" | "ai";
   hour: number;
   isPlaying: boolean;
   scale: number;
@@ -19,10 +19,11 @@ interface AppState {
   terrainData: TerrainData | null;
   simData: SimulationData | null;
   seriesData: TimelineItem[];
+  fullSeries: SeriesData | null;
   modelsReport: any | null;
   isLoading: boolean;
 
-  setActiveTab: (tab: "overview" | "ai") => void;
+  setActiveTab: (tab: "overview" | "history" | "ai") => void;
   setHour: (hour: number) => void;
   togglePlay: () => void;
   setScale: (scale: number) => void;
@@ -32,6 +33,8 @@ interface AppState {
   setViewMode: (mode: "3d" | "map") => void;
   setMetricMode: (mode: "risk" | "rain" | "terrain") => void;
   setScenarioModalOpen: (open: boolean) => void;
+  applyScenario: (scale: number, lo: number, hi: number, rainAlert: number) => Promise<void>;
+  focusEventOnMap: (lat: number, lon: number) => void;
 
   initData: () => Promise<void>;
   updateSimulation: (newHour?: number) => Promise<void>;
@@ -42,8 +45,8 @@ export const useStore = create<AppState>((set, get) => ({
   hour: 24,
   isPlaying: false,
   scale: 1.0,
-  thresholdLow: 0.40,
-  thresholdHigh: 0.70,
+  thresholdLow: 0.25,
+  thresholdHigh: 0.45,
   rainAlert: 100,
   selectedAreaName: "Trà Mai",
   viewMode: "3d",
@@ -54,6 +57,7 @@ export const useStore = create<AppState>((set, get) => ({
   terrainData: null,
   simData: null,
   seriesData: [],
+  fullSeries: null,
   modelsReport: null,
   isLoading: true,
 
@@ -80,6 +84,49 @@ export const useStore = create<AppState>((set, get) => ({
   setMetricMode: (metricMode) => set({ metricMode }),
   setScenarioModalOpen: (isScenarioModalOpen) => set({ isScenarioModalOpen }),
 
+  focusEventOnMap: (lat: number, lon: number) => {
+    const { baseData } = get();
+    if (baseData?.areas?.length) {
+      let closest = baseData.areas[0];
+      let minDist = Infinity;
+      for (const a of baseData.areas) {
+        const d = Math.hypot(a.lat - lat, a.lon - lon);
+        if (d < minDist) {
+          minDist = d;
+          closest = a;
+        }
+      }
+      set({ selectedAreaName: closest.name, activeTab: "overview" });
+    } else {
+      set({ activeTab: "overview" });
+    }
+  },
+
+  applyScenario: async (newScale: number, newLow: number, newHigh: number, newRainAlert: number) => {
+    const { hour } = get();
+    set({
+      scale: newScale,
+      thresholdLow: newLow,
+      thresholdHigh: newHigh,
+      rainAlert: newRainAlert,
+    });
+    try {
+      const [sim, series] = await Promise.all([
+        fetchSimulation(hour, newScale, newLow, newHigh, newRainAlert),
+        fetchSeries(newScale, newLow, newHigh),
+      ]);
+      set({
+        simData: sim,
+        seriesData: series.timeline,
+        fullSeries: series,
+        isScenarioModalOpen: false,
+      });
+    } catch (err) {
+      console.error("Failed to apply scenario:", err);
+      set({ isScenarioModalOpen: false });
+    }
+  },
+
   initData: async () => {
     set({ isLoading: true });
     try {
@@ -97,6 +144,7 @@ export const useStore = create<AppState>((set, get) => ({
         terrainData: terrain,
         simData: sim,
         seriesData: series.timeline,
+        fullSeries: series,
         modelsReport: models,
         selectedAreaName: defaultArea,
         viewMode: "3d",

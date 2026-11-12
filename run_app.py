@@ -15,7 +15,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # Tự động chuyển sang Python trong venv nếu đang chạy bằng Python toàn cục
-venv_python = ROOT / "venv" / "Scripts" / "python.exe"
+venv_python = ROOT / ".venv" / "Scripts" / "python.exe"
+if not venv_python.exists():
+    venv_python = ROOT / "venv" / "Scripts" / "python.exe"
 if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
     print(f" -> Tự động kích hoạt môi trường ảo: {venv_python}")
     subprocess.run([str(venv_python), str(ROOT / "run_app.py")] + sys.argv[1:])

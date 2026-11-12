@@ -63,13 +63,16 @@ export const Map2DView: React.FC = () => {
             );
           })}
 
-          {/* Historical Landslide Dots */}
-          {[
-            [40, 60], [55, 75], [80, 45], [110, 85],
-            [90, 110], [130, 95], [65, 125], [105, 140]
-          ].map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r="1.2" fill="#ffffff" opacity="0.9" />
-          ))}
+          {/* Historical Landslide Dots (mapped dynamically from baseData.events) */}
+          {(baseData?.events || []).map((ev, i) => {
+            const u = Math.max(0, Math.min(1, (ev.lon - bounds.lon_min) / (bounds.lon_max - bounds.lon_min)));
+            const v = Math.max(0, Math.min(1, 1 - (ev.lat - bounds.lat_min) / (bounds.lat_max - bounds.lat_min)));
+            const cx = u * 176 + 2;
+            const cy = v * 176 + 2;
+            return (
+              <circle key={i} cx={cx} cy={cy} r="1.3" fill="#ffffff" opacity="0.85" />
+            );
+          })}
         </svg>
 
         {/* Station Markers Overlay */}

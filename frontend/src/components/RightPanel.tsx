@@ -1,6 +1,14 @@
 import React from "react";
 import { useStore } from "../store/useStore";
-import { DotGauge } from "./DotGauge";
+import { Sparkline } from "./Sparkline";
+
+const HI = "#ff5a52";
+const MI = "#f5b942";
+const LO = "#4ade80";
+const AC = "#d4e88a";
+
+const vn = (x: number, d: number = 2) => x.toFixed(d).replace(".", ",");
+const hh = (t: number) => `${t.toString().padStart(2, "0")}:00`;
 
 export const RightPanel: React.FC = () => {
   const {
@@ -11,288 +19,499 @@ export const RightPanel: React.FC = () => {
     selectedAreaName,
     thresholdLow,
     thresholdHigh,
+    rainAlert,
     hour,
+    scale,
+    fullSeries,
   } = useStore();
 
   const areas = simData?.areas || baseData?.areas || [];
-  const currentArea = areas.find((a) => a.name === selectedAreaName) || areas[0] || {
-    name: "Trà Mai",
-    score: 0.82,
-    delta_score: 0.01,
-    rain: 113,
-    slope: 24.5,
-  };
+  const names = areas.map((a) => a.name);
+  const currentArea = areas.find((a) => a.name === selectedAreaName) || areas[0];
 
-  const currentScore = currentArea?.score !== undefined ? currentArea.score : 0.82;
-  const currentDelta = currentArea?.delta_score !== undefined ? currentArea.delta_score : 0.01;
-  const maxRisk = simData?.max_risk_area || { name: "Trà Mai", score: 0.82, delta: 0.01 };
-  const maxRain = simData?.max_rain_area || { name: "Trà Tập", rain: 134, delta: 5 };
+  const t = hour;
+  const isSelected = Boolean(selectedAreaName && names.includes(selectedAreaName));
 
-  const highAreasCount = simData?.area_counts?.high || 4;
-  const midAreasCount = simData?.area_counts?.mid || 3;
-  const highCellsCount = simData?.grid_distribution?.high || 19;
-  const midCellsCount = simData?.grid_distribution?.mid || 164;
-  const lowCellsCount = simData?.grid_distribution?.low || 151;
+  const lvl = (score: number) =>
+    score >= thresholdHigh ? "Cao" : score >= thresholdLow ? "Trung bình" : "Thấp";
+  const lcol = (score: number) =>
+    score >= thresholdHigh ? HI : score >= thresholdLow ? MI : LO;
+
+  // Global counts
+  const n = areas.length || 12;
+  const nHigh = simData?.area_counts?.high || 0;
+  const nMid = simData?.area_counts?.mid || 0;
+  const highCells = simData?.grid_distribution?.high || 0;
+  const midCells = simData?.grid_distribution?.mid || 0;
+  const lowCells = simData?.grid_distribution?.low || 324;
   const totalCells = simData?.grid_distribution?.total || 324;
 
-  const rainExceeded = simData?.rain_exceeded_count || 4;
-  const currentRain = Math.round(currentArea?.rain || 113);
-  const currentSlope = (currentArea?.slope || 24.5).toFixed(1);
+  const maxRisk = simData?.max_risk_area || {
+    name: currentArea?.name || "Trà Mai",
+    score: currentArea?.score || 0.82,
+    delta: currentArea?.delta_score || 0.01,
+  };
+  const maxRain = simData?.max_rain_area || {
+    name: currentArea?.name || "Trà Mai",
+    rain: currentArea?.rain || 113,
+    delta: 0,
+  };
 
-  // Top 3 risk areas matching Screenshot 3
+  const rainExceeded = simData?.rain_exceeded_count || 0;
+
+  // Series values for sparklines
+  const areaScoreSeries =
+    fullSeries?.scores_by_area && currentArea
+      ? fullSeries.scores_by_area[currentArea.name]
+      : undefined;
+  const areaRainSeries =
+    fullSeries?.rain_by_area && currentArea
+      ? fullSeries.rain_by_area[currentArea.name]
+      : undefined;
+  const maxScoreSeries = fullSeries?.max_scores;
+  const maxRainSeries = fullSeries?.max_rain;
+  const nHighSeries = fullSeries?.n_high_areas;
+  const highCellsSeries = fullSeries?.high_cells;
+
+  // Percentiles for slope/elev
+  const slopePercentile = currentArea
+    ? Math.round(
+        (areas.filter((a) => (a.slope || 0) < (currentArea.slope || 0)).length /
+          areas.length) *
+          100
+      )
+    : 50;
+  const elevPercentile = currentArea
+    ? Math.round(
+        (areas.filter((a) => (a.elev || 0) < (currentArea.elev || 0)).length /
+          areas.length) *
+          100
+      )
+    : 50;
+
+  // Top 3 risk areas
   const top3 = simData?.top3_risk || [
-    { name: "Trà Mai", score: 0.82, delta: 0.01, level: "Cao" },
-    { name: "Trà Vân", score: 0.81, delta: 0.01, level: "Cao" },
-    { name: "Trà Tập", score: 0.80, delta: -0.01, level: "Cao" },
+    { name: currentArea?.name || "Trà Mai", score: 0.82, delta: 0.01 },
   ];
 
+  // Helper for single card rendering
+  const renderCard = (
+    title: string,
+    val: string | number,
+    unit: string,
+    col: string,
+    dl: number | null | undefined,
+    sparkComp: React.ReactNode,
+    note: string,
+    smallText: boolean = false
+  ) => {
+    const isUp = dl !== null && dl !== undefined && dl > 0.0005;
+    const isDn = dl !== null && dl !== undefined && dl < -0.0005;
+
+    return (
+      <div className="rounded-[16px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] p-2.5 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-1.5 text-[0.78rem] text-[#d6d8dc] whitespace-nowrap">
+            <i className="w-[3px] h-[13px] rounded-[2px]" style={{ backgroundColor: col }} />
+            <span>{title}</span>
+          </div>
+
+          <div className="my-1.5 flex items-baseline gap-1">
+            <span
+              className={`font-extralight tracking-tight text-white leading-none ${
+                smallText ? "text-[1.15rem] font-light truncate" : "text-[1.85rem]"
+              }`}
+            >
+              {val}
+            </span>
+            {unit && <span className="text-[0.76rem] text-[#8b8f98]">{unit}</span>}
+          </div>
+
+          {dl !== null && dl !== undefined && (
+            <div>
+              <span
+                className={`inline-block rounded-full px-2 py-0.2 text-[0.7rem] ${
+                  isUp
+                    ? "text-[#ff6b6b] bg-white/[0.07]"
+                    : isDn
+                    ? "text-[#4ade80] bg-white/[0.07]"
+                    : "text-[#c8cbd2] bg-white/[0.07]"
+                }`}
+              >
+                {isUp ? `+${vn(dl)}` : vn(dl)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          {sparkComp}
+          <div className="text-[0.68rem] text-[#8b8f98] mt-1.5 truncate">{note}</div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <aside className="w-[315px] h-full flex flex-col gap-2.5 p-3 overflow-y-auto no-scrollbar z-10 shrink-0 select-none">
-      {/* 1. View Toggles (Nguy cơ | Mưa | Địa hình) */}
-      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/70 border border-white/10 backdrop-blur-md">
-        <button
-          onClick={() => setMetricMode("risk")}
-          className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
-            metricMode === "risk"
-              ? "bg-brand-yellow text-slate-950 shadow-md"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Nguy cơ
-        </button>
-        <button
-          onClick={() => setMetricMode("rain")}
-          className={`flex-1 py-1 text-xs font-semibold rounded-lg transition-all ${
-            metricMode === "rain"
-              ? "bg-brand-yellow text-slate-950 shadow-md"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Mưa
-        </button>
-        <button
-          onClick={() => setMetricMode("terrain")}
-          className={`flex-1 py-1 text-xs font-semibold rounded-lg transition-all ${
-            metricMode === "terrain"
-              ? "bg-brand-yellow text-slate-950 shadow-md"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Địa hình
-        </button>
+    <aside className="w-[432px] h-full flex flex-col gap-3 p-3 overflow-y-auto no-scrollbar z-10 shrink-0 select-none text-[#e8e9ec] font-sans">
+      {/* 1. Nhóm chỉ số Pills (Nguy cơ | Mưa | Địa hình) */}
+      <div className="flex items-center gap-2 px-1">
+        {(["risk", "rain", "terrain"] as const).map((mode) => {
+          const label =
+            mode === "risk" ? "Nguy cơ" : mode === "rain" ? "Mưa" : "Địa hình";
+          const isActive = metricMode === mode;
+          return (
+            <button
+              key={mode}
+              onClick={() => setMetricMode(mode)}
+              className={`px-4 py-1 rounded-full text-[0.82rem] transition-all cursor-pointer ${
+                isActive
+                  ? "bg-[#d4e88a] text-[#1b2208] font-medium shadow-sm"
+                  : "bg-white/[0.05] border border-white/[0.08] text-[#d6d8dc] hover:border-white/20"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* 2. Grid of 8 Small Metric Cards with DotGauges */}
-      <div className="grid grid-cols-2 gap-2">
-        {/* Card 1: Điểm khu vực */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-[#ef4444] rounded-sm" />
-            <span>Điểm khu vực</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">
-              {currentScore.toFixed(2).replace(".", ",")}
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">/ 1</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              {currentDelta >= 0 ? `+${currentDelta.toFixed(2).replace(".", ",")}` : currentDelta.toFixed(2).replace(".", ",")}
-            </span>
-          </div>
-          <DotGauge value={0.82} level="high" dots={5} activeDotIndex={3} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">
-            {`Mức Cao, ngưỡng cao từ ${thresholdHigh.toFixed(2).replace(".", ",")}`}
-          </div>
-        </div>
+      {/* 2. Grid of KPI Cards (.mg) */}
+      <div className="grid grid-cols-2 gap-2.5 shrink-0">
+        {metricMode === "risk" && (
+          <>
+            {renderCard(
+              "Điểm khu vực",
+              isSelected && currentArea ? vn(currentArea.score || 0) : "—",
+              "/ 1",
+              isSelected && currentArea ? lcol(currentArea.score || 0) : AC,
+              isSelected && currentArea ? currentArea.delta_score : null,
+              <Sparkline
+                values={areaScoreSeries}
+                vmax={1}
+                t={t}
+                refVal={thresholdHigh}
+                col={isSelected && currentArea ? lcol(currentArea.score || 0) : AC}
+              />,
+              `Mức ${currentArea ? lvl(currentArea.score || 0) : "Thấp"}, ngưỡng cao từ ${vn(thresholdHigh)}`
+            )}
 
-        {/* Card 2: Cao nhất toàn vùng */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-[#ef4444] rounded-sm" />
-            <span>Cao nhất toàn vùng</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">
-              {maxRisk.score.toFixed(2).replace(".", ",")}
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">/ 1</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              {maxRisk.delta >= 0 ? `+${maxRisk.delta.toFixed(2).replace(".", ",")}` : maxRisk.delta.toFixed(2).replace(".", ",")}
-            </span>
-          </div>
-          <DotGauge value={0.82} level="mid" dots={5} activeDotIndex={3} />
-          <div className="text-[8.5px] text-slate-300 font-medium mt-0.5 truncate">{maxRisk.name}</div>
-        </div>
+            {renderCard(
+              "Cao nhất toàn vùng",
+              vn(maxRisk.score),
+              "/ 1",
+              lcol(maxRisk.score),
+              maxRisk.delta,
+              <Sparkline
+                values={maxScoreSeries}
+                vmax={1}
+                t={t}
+                refVal={thresholdHigh}
+                col={AC}
+              />,
+              maxRisk.name
+            )}
 
-        {/* Card 3: Khu vực mức cao */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-[#ef4444] rounded-sm" />
-            <span>Khu vực mức cao</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{highAreasCount}</span>
-            <span className="text-[10px] text-slate-400 font-mono">/ 12</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              +1
-            </span>
-          </div>
-          <DotGauge value={0.33} level="high" dots={5} activeDotIndex={1} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">{`Theo dõi: ${midAreasCount} khu vực`}</div>
-        </div>
+            {renderCard(
+              "Khu vực mức cao",
+              nHigh,
+              `/ ${n}`,
+              HI,
+              null,
+              <Sparkline values={nHighSeries} vmax={n} t={t} col={HI} />,
+              `Theo dõi: ${nMid} khu vực`
+            )}
 
-        {/* Card 4: Ô lưới mức cao */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-[#ef4444] rounded-sm" />
-            <span>Ô lưới mức cao</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{highCellsCount}</span>
-            <span className="text-[10px] text-slate-400 font-mono">/ {totalCells}</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              +3
-            </span>
-          </div>
-          <DotGauge value={0.3} level="high" dots={5} activeDotIndex={1} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">{`Trung bình: ${midCellsCount} ô`}</div>
-        </div>
+            {renderCard(
+              "Ô lưới mức cao",
+              highCells,
+              `/ ${totalCells}`,
+              HI,
+              null,
+              <Sparkline values={highCellsSeries} vmax={totalCells} t={t} col={HI} />,
+              `Trung bình: ${midCells} ô`
+            )}
 
-        {/* Card 5: Mưa 24 giờ khu vực */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-cyan-400 rounded-sm" />
-            <span>Mưa 24 giờ khu vực</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{currentRain}</span>
-            <span className="text-[10px] text-slate-400 font-mono">mm</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              +4
-            </span>
-          </div>
-          <DotGauge value={0.55} level="mid" dots={5} activeDotIndex={2} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">Ngưỡng chú ý 100 mm</div>
-        </div>
+            {renderCard(
+              "Mưa 24 giờ khu vực",
+              isSelected && currentArea ? `${Math.round(currentArea.rain || 0)}` : "—",
+              "mm",
+              AC,
+              null,
+              <Sparkline
+                values={areaRainSeries}
+                vmax={Math.max(150, rainAlert)}
+                t={t}
+                refVal={rainAlert}
+                col={AC}
+              />,
+              `Ngưỡng chú ý ${rainAlert} mm`
+            )}
 
-        {/* Card 6: Mưa lớn nhất vùng */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-cyan-400 rounded-sm" />
-            <span>Mưa lớn nhất vùng</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{Math.round(maxRain.rain)}</span>
-            <span className="text-[10px] text-slate-400 font-mono">mm</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              +5
-            </span>
-          </div>
-          <DotGauge value={0.7} level="mid" dots={5} activeDotIndex={3} />
-          <div className="text-[8.5px] text-slate-300 font-medium mt-0.5 truncate">{maxRain.name}</div>
-        </div>
+            {renderCard(
+              "Mưa lớn nhất vùng",
+              `${Math.round(maxRain.rain)}`,
+              "mm",
+              AC,
+              null,
+              <Sparkline
+                values={maxRainSeries}
+                vmax={Math.max(150, rainAlert)}
+                t={t}
+                refVal={rainAlert}
+                col={AC}
+              />,
+              maxRain.name
+            )}
 
-        {/* Card 7: Vượt ngưỡng mưa */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-amber-400 rounded-sm" />
-            <span>Vượt ngưỡng mưa</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{rainExceeded}</span>
-            <span className="text-[10px] text-slate-400 font-mono">/ 12</span>
-            <span className="ml-auto text-[9px] font-mono font-bold text-[#ef4444] bg-[#ef4444]/15 px-1 rounded">
-              +1
-            </span>
-          </div>
-          <DotGauge value={0.33} level="mid" dots={5} activeDotIndex={1} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">khu vực</div>
-        </div>
+            {renderCard(
+              "Vượt ngưỡng mưa",
+              rainExceeded,
+              `/ ${n}`,
+              MI,
+              null,
+              <Sparkline vmax={n} t={t} col={MI} />,
+              "khu vực"
+            )}
 
-        {/* Card 8: Độ dốc khu vực */}
-        <div className="rounded-xl bg-slate-900/70 border border-white/10 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-            <span className="w-1 h-2 bg-slate-400 rounded-sm" />
-            <span>Độ dốc khu vực</span>
-          </div>
-          <div className="flex items-baseline gap-1 mt-0.5">
-            <span className="text-lg font-bold font-mono text-white leading-none">{currentSlope}°</span>
-          </div>
-          <DotGauge value={0.55} level="mid" dots={5} activeDotIndex={2} />
-          <div className="text-[8.5px] text-slate-400 mt-0.5 truncate">cao hơn 92% số khu vực</div>
-        </div>
+            {renderCard(
+              "Độ dốc khu vực",
+              isSelected && currentArea ? vn(currentArea.slope, 1) : "—",
+              "°",
+              MI,
+              null,
+              <div className="h-[30px]" />,
+              `cao hơn ${slopePercentile}% số khu vực`
+            )}
+          </>
+        )}
+
+        {metricMode === "rain" && (
+          <>
+            {renderCard(
+              "Mưa 24 giờ khu vực",
+              isSelected && currentArea ? `${Math.round(currentArea.rain || 0)}` : "—",
+              "mm",
+              AC,
+              null,
+              <Sparkline
+                values={areaRainSeries}
+                vmax={Math.max(150, rainAlert)}
+                t={t}
+                refVal={rainAlert}
+                col={AC}
+              />,
+              `Ngưỡng chú ý ${rainAlert} mm`
+            )}
+
+            {renderCard(
+              "Mưa lớn nhất vùng",
+              `${Math.round(maxRain.rain)}`,
+              "mm",
+              AC,
+              null,
+              <Sparkline
+                values={maxRainSeries}
+                vmax={Math.max(150, rainAlert)}
+                t={t}
+                refVal={rainAlert}
+                col={AC}
+              />,
+              maxRain.name
+            )}
+
+            {renderCard(
+              "Mưa trung bình vùng",
+              `${Math.round(areas.reduce((s, a) => s + (a.rain || 0), 0) / (areas.length || 1))}`,
+              "mm",
+              AC,
+              null,
+              <Sparkline vmax={Math.max(150, rainAlert)} t={t} col={AC} />,
+              "trung bình 12 khu vực"
+            )}
+
+            {renderCard(
+              "Mưa nhỏ nhất vùng",
+              `${Math.round(Math.min(...areas.map((a) => a.rain || 0)))}`,
+              "mm",
+              AC,
+              null,
+              <Sparkline vmax={Math.max(150, rainAlert)} t={t} col={AC} />,
+              areas.reduce((min, a) => (a.rain || 0) < (min.rain || 0) ? a : min, areas[0] || {}).name || ""
+            )}
+
+            {renderCard(
+              "Vượt ngưỡng mưa",
+              rainExceeded,
+              `/ ${n}`,
+              MI,
+              null,
+              <Sparkline vmax={n} t={t} col={MI} />,
+              "khu vực"
+            )}
+
+            {renderCard(
+              "Hệ số kịch bản",
+              vn(scale, 1),
+              "×",
+              AC,
+              null,
+              <div className="h-[30px]" />,
+              "Mưa tăng dần từ 30% đến 100% mức đã chọn"
+            )}
+          </>
+        )}
+
+        {metricMode === "terrain" && (
+          <>
+            {renderCard(
+              "Độ cao khu vực",
+              isSelected && currentArea ? `${Math.round(currentArea.elev)}` : "—",
+              "m",
+              AC,
+              null,
+              <div className="h-[30px]" />,
+              `cao hơn ${elevPercentile}% số khu vực`
+            )}
+
+            {renderCard(
+              "Độ dốc khu vực",
+              isSelected && currentArea ? vn(currentArea.slope, 1) : "—",
+              "°",
+              MI,
+              null,
+              <div className="h-[30px]" />,
+              `cao hơn ${slopePercentile}% số khu vực`
+            )}
+
+            {renderCard(
+              "Lớp phủ",
+              currentArea?.cover || "Rừng tự nhiên",
+              "",
+              LO,
+              null,
+              <div className="h-[30px]" />,
+              "ESA WorldCover",
+              true
+            )}
+
+            {renderCard(
+              "Vị trí",
+              currentArea ? `${vn(currentArea.lat)}°B` : "—",
+              "",
+              AC,
+              null,
+              <div className="h-[30px]" />,
+              currentArea ? `${vn(currentArea.lon)}°Đ · mã ${currentArea.code}` : "",
+              true
+            )}
+
+            {renderCard(
+              "Độ cao lớn nhất vùng",
+              `${Math.round(Math.max(...areas.map((a) => a.elev || 0)))}`,
+              "m",
+              AC,
+              null,
+              <div className="h-[30px]" />,
+              areas.reduce((max, a) => (a.elev || 0) > (max.elev || 0) ? a : max, areas[0] || {}).name || ""
+            )}
+
+            {renderCard(
+              "Độ dốc lớn nhất vùng",
+              vn(Math.max(...areas.map((a) => a.slope || 0)), 1),
+              "°",
+              MI,
+              null,
+              <div className="h-[30px]" />,
+              areas.reduce((max, a) => (a.slope || 0) > (max.slope || 0) ? a : max, areas[0] || {}).name || ""
+            )}
+          </>
+        )}
       </div>
 
-      {/* 3. Phân bố 324 ô lưới */}
-      <div className="rounded-xl bg-slate-900/70 border border-white/10 p-3 backdrop-blur-md flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200">Phân bố {totalCells} ô lưới</span>
-          <span className="text-[10px] text-slate-400 font-mono">{`giờ ${hour.toString().padStart(2, "0")}:00`}</span>
+      {/* 3. Phân bố 324 ô lưới (stk stacked bar) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Phân bố {totalCells} ô lưới</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">giờ {hh(t)}</small>
         </div>
 
-        {/* Stacked Horizontal Colored Bar (Green, Orange, Red) */}
-        <div className="w-full h-2 rounded-full overflow-hidden flex bg-slate-800">
+        {/* 3-segment stacked bar */}
+        <div className="flex h-2.5 mx-4 mt-3 mb-2 rounded-[5px] overflow-hidden bg-white/[0.08]">
           <div
-            className="h-full bg-[#10b981]"
-            style={{ width: `${(lowCellsCount / totalCells) * 100}%` }}
+            style={{ width: `${(lowCells / totalCells) * 100}%`, backgroundColor: LO }}
+            className="h-full transition-all duration-300"
           />
           <div
-            className="h-full bg-[#f59e0b]"
-            style={{ width: `${(midCellsCount / totalCells) * 100}%` }}
+            style={{ width: `${(midCells / totalCells) * 100}%`, backgroundColor: MI }}
+            className="h-full transition-all duration-300"
           />
           <div
-            className="h-full bg-[#ef4444]"
-            style={{ width: `${(highCellsCount / totalCells) * 100}%` }}
+            style={{ width: `${(highCells / totalCells) * 100}%`, backgroundColor: HI }}
+            className="h-full transition-all duration-300"
           />
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-[#10b981]" />
-            Thấp {lowCellsCount}
+        <div className="flex justify-between px-4 pb-3 text-[0.72rem] text-[#b9bcc3]">
+          <span className="flex items-center gap-1.5">
+            <i className="w-[9px] h-[9px] rounded-[2px]" style={{ backgroundColor: LO }} />
+            Thấp {lowCells}
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-[#f59e0b]" />
-            Trung bình {midCellsCount}
+          <span className="flex items-center gap-1.5">
+            <i className="w-[9px] h-[9px] rounded-[2px]" style={{ backgroundColor: MI }} />
+            Trung bình {midCells}
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-[#ef4444]" />
-            Cao {highCellsCount}
+          <span className="flex items-center gap-1.5">
+            <i className="w-[9px] h-[9px] rounded-[2px]" style={{ backgroundColor: HI }} />
+            Cao {highCells}
           </span>
         </div>
       </div>
 
-      {/* 4. Top 3 nguy cơ cao nhất */}
-      <div className="rounded-xl bg-slate-900/70 border border-white/10 p-3 backdrop-blur-md flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200">Top 3 nguy cơ cao nhất</span>
-          <span className="text-[10px] text-slate-500">so với giờ trước</span>
+      {/* 4. Top 3 nguy cơ cao nhất (.rk) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Top 3 nguy cơ cao nhất</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">so với giờ trước</small>
         </div>
 
-        <div className="flex flex-col gap-2 pt-0.5">
-          {top3.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-xs">
-              <span className="w-14 truncate text-slate-300 font-medium">{item.name}</span>
-              <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-[#ef4444] rounded-full"
-                  style={{ width: `${Math.min(100, item.score * 100)}%` }}
-                />
-              </div>
-              <span className="w-8 text-right font-mono font-bold text-white text-[11px]">
-                {item.score.toFixed(2).replace(".", ",")}
-              </span>
-              <span
-                className={`w-9 text-right font-mono text-[10px] font-bold ${
-                  item.delta > 0 ? "text-[#ef4444]" : item.delta < 0 ? "text-[#10b981]" : "text-slate-400"
-                }`}
-              >
-                {item.delta > 0 ? `+${item.delta.toFixed(2).replace(".", ",")}` : item.delta.toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-          ))}
-        </div>
+        <table className="w-full text-[0.8rem] border-collapse">
+          <tbody>
+            {top3.slice(0, 3).map((item) => {
+              const score = item.score || 0;
+              const delta = item.delta || 0;
+              const isUp = delta > 0.0005;
+              const sg = isUp ? "+" : "";
+
+              return (
+                <tr key={item.name} className="border-b border-white/[0.05] last:border-b-0">
+                  <td className="py-2 pl-4 text-white font-medium">{item.name}</td>
+                  <td className="py-2 px-2 w-[34%]">
+                    <div className="h-[6px] rounded-[3px] bg-white/[0.08] overflow-hidden">
+                      <div
+                        className="h-full rounded-[3px]"
+                        style={{
+                          width: `${Math.min(100, Math.round(score * 100))}%`,
+                          backgroundColor: lcol(score),
+                        }}
+                      />
+                    </div>
+                  </td>
+                  <td className="py-2 px-2 text-right font-medium text-white">{vn(score)}</td>
+                  <td
+                    className={`py-2 pr-4 text-right text-[0.7rem] ${
+                      isUp ? "text-[#ff6b6b]" : "text-[#8b8f98]"
+                    }`}
+                  >
+                    {sg}
+                    {vn(delta)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </aside>
   );

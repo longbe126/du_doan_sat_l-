@@ -80,18 +80,58 @@ def _map_scale(thr):
     return [[0.0, a], [lo, a], [lo, b], [hi, b], [hi, c], [1.0, c]]
 
 
-def _terrain_scale(thr):
+def _ramp_stops(thr):
+    """Thang màu liên tục: xanh đậm, xanh lá, vàng, cam, đỏ. Mốc ngưỡng nằm ở vàng nhạt và cam."""
     lo, hi = thr
-    a, b, c = "#2E6B58", "#C6922E", "#C83228"
-    return [[0.0, a], [lo, a], [lo, b], [hi, b], [hi, c], [1.0, c]]
+    return [(0.0, "#1b4d43"), (lo * 0.5, "#2f7d62"), (lo, "#8fb05a"), ((lo + hi) / 2, "#e0a93a"),
+            (hi, "#e5693a"), (1.0, "#d63a30")]
+
+
+def _terrain_scale(thr):
+    return [[p, c] for p, c in _ramp_stops(thr)]
+
+
+def _cell_scale(thr):
+    """Ô lưới chỉ tô nhẹ từ mức Trung bình trở lên, mức Thấp để trong suốt cho nhìn thấy bản đồ nhiệt bên dưới."""
+    lo, hi = thr
+    z, a, r = "rgba(0,0,0,0)", "rgba(245,185,66,0.22)", "rgba(255,90,82,0.34)"
+    return [[0.0, z], [lo, z], [lo, a], [hi, a], [hi, r], [1.0, r]]
+
+
+_HEAT_CACHE: dict = {}
+
+
+def risk_heat_uri(base: dict, risk, thr) -> str:
+    """Bản đồ nhiệt liên tục dựng từ toàn bộ lưới điểm nguy cơ (không gộp thành ô)."""
+    from PIL import Image
+
+    lat = np.asarray(base["lat"], float)
+    r = np.clip(_smooth(np.asarray(risk, float), 1), 0, 1)
+    key = (r.shape, round(float(r.sum()), 4), tuple(np.round(thr, 3)))
+    if key in _HEAT_CACHE:
+        return _HEAT_CACHE[key]
+    stops = _ramp_stops(thr)
+    xs = [s[0] for s in stops]
+    cols = np.array([[int(c[i:i + 2], 16) for i in (1, 3, 5)] for _, c in stops], float)
+    rgb = np.stack([np.interp(r, xs, cols[:, k]) for k in range(3)], -1).astype(np.uint8)
+    if lat[0] < lat[-1]:
+        rgb = rgb[::-1]
+    img = Image.fromarray(rgb).resize((rgb.shape[1] * 8, rgb.shape[0] * 8), Image.BICUBIC)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    if len(_HEAT_CACHE) > 60:
+        _HEAT_CACHE.clear()
+    _HEAT_CACHE[key] = uri
+    return uri
 
 
 # ----------------------------------------------------------------------------
 # Bản đồ 2D
 # ----------------------------------------------------------------------------
 def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
-                        show_risk_grid=True, show_hist=True, show_areas=True, height=600,
-                        selected_area: str | None = None):
+                        show_risk_grid=True, show_hist=True, show_areas=True, height=720,
+                        selected_area: str | None = None, risk_field=None, zoom: float = 9.5):
     lat, lon = np.asarray(base["lat"], float), np.asarray(base["lon"], float)
     west, east, south, north = lon.min(), lon.max(), lat.min(), lat.max()
     fig = go.Figure()
@@ -99,17 +139,33 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
     if show_risk_grid:
         fig.add_trace(go.Choroplethmap(
             geojson=base["geojson"], locations=base["cell_ids"], z=risk_cells,
-            colorscale=_map_scale(thr), zmin=0, zmax=1, showscale=False,
+            colorscale=_cell_scale(thr) if risk_field is not None else _map_scale(thr), zmin=0, zmax=1, showscale=False,
             marker_opacity=1, marker_line_width=0.3, marker_line_color="rgba(160,190,210,0.18)",
             hovertemplate="Điểm nguy cơ của ô: %{z:.2f}<extra></extra>"))
 
     if show_hist:
         ev = base["events"]
+        locs = []
+        for _, r in ev.iterrows():
+            dists = [np.hypot(r["lat"] - a["lat"], r["lon"] - a["lon"]) for _, a in df.iterrows()]
+            m_idx = int(np.argmin(dists))
+            c_name = df.iloc[m_idx]["name"]
+            distr = "Nam Trà My" if "Trà" in c_name else "Phước Sơn"
+            locs.append(f"Xã {c_name} ({distr})")
+
         fig.add_trace(go.Scattermap(
             lat=ev["lat"], lon=ev["lon"], mode="markers",
-            marker=dict(size=5, color="#c9d6df", opacity=0.9),
-            text=(ev["id"].astype(str) + "<br>" + ev["date"].astype(str) + "<br>" + ev["cause"].astype(str)),
-            hovertemplate="<b>Sạt lở lịch sử (mô phỏng)</b><br>%{text}<extra></extra>"))
+            marker=dict(size=8, color="#f4f7fb", opacity=1.0),
+            customdata=np.column_stack([
+                ev["id"], locs, ev["cause"], ev["date"], ev["elev"].round().astype(int)
+            ]),
+            hovertemplate=(
+                "<b>Sạt lở lịch sử [%{customdata[0]}]</b><br>"
+                "📍 <b>Địa điểm:</b> %{customdata[1]}<br>"
+                "⚠️ <b>Nguyên nhân:</b> %{customdata[2]}<br>"
+                "📅 <b>Ngày xảy ra:</b> %{customdata[3]}<br>"
+                "⛰️ <b>Độ cao:</b> %{customdata[4]} m<extra></extra>"
+            )))
 
     if show_areas:
         fig.add_trace(go.Scattermap(
@@ -168,9 +224,14 @@ def render_2d_workspace(base, risk_cells, df, thr, map_style="Tối",
         layers.append(dict(sourcetype="image", source=hillshade_uri(base), below="traces", opacity=shade_opacity,
                            coordinates=[[west, north], [east, north], [east, south], [west, south]]))
 
+    if show_risk_grid and risk_field is not None:
+        layers.append(dict(sourcetype="image", source=risk_heat_uri(base, risk_field, thr), below="traces", opacity=0.72,
+                           coordinates=[[west, north], [east, north], [east, south], [west, south]]))
     fig.update_layout(**base_layout(height), showlegend=False, clickmode="event+select")
-    fig.update_layout(map=dict(style=style, zoom=9.7, layers=layers,
-                               center=dict(lat=float((south + north) / 2), lon=float((west + east) / 2))))
+    # lệch tâm bản đồ lên trên một chút để lưới không bị thanh thời gian che
+    fig.update_layout(map=dict(style=style, zoom=zoom, layers=layers,
+                               center=dict(lat=float((south + north) / 2 - 0.035 * 2 ** (9.5 - zoom)),
+                                           lon=float((west + east) / 2))))
     return fig
 
 
@@ -193,11 +254,27 @@ def render_3d_terrain(base, risk, df, thr, show_hist=True, show_areas=True, heig
 
     if show_hist:
         ev = base["events"]
+        locs = []
+        for _, r in ev.iterrows():
+            dists = [np.hypot(r["lat"] - a["lat"], r["lon"] - a["lon"]) for _, a in df.iterrows()]
+            m_idx = int(np.argmin(dists))
+            c_name = df.iloc[m_idx]["name"]
+            distr = "Nam Trà My" if "Trà" in c_name else "Phước Sơn"
+            locs.append(f"Xã {c_name} ({distr})")
+
         fig.add_trace(go.Scatter3d(
             x=ev["lon"], y=ev["lat"], z=_sample(base, elev, ev["lat"], ev["lon"]) + 25, mode="markers",
-            marker=dict(size=4, color="#ffffff", opacity=0.9),
-            text=(ev["id"].astype(str) + "<br>" + ev["date"].astype(str)),
-            hovertemplate="<b>Sạt lở lịch sử (mô phỏng)</b><br>%{text}<extra></extra>"))
+            marker=dict(size=5.5, color="#ffffff", opacity=1.0),
+            customdata=np.column_stack([
+                ev["id"], locs, ev["cause"], ev["date"], ev["elev"].round().astype(int)
+            ]),
+            hovertemplate=(
+                "<b>Sạt lở lịch sử [%{customdata[0]}]</b><br>"
+                "📍 <b>Địa điểm:</b> %{customdata[1]}<br>"
+                "⚠️ <b>Nguyên nhân:</b> %{customdata[2]}<br>"
+                "📅 <b>Ngày xảy ra:</b> %{customdata[3]}<br>"
+                "⛰️ <b>Độ cao:</b> %{customdata[4]} m<extra></extra>"
+            )))
 
     if show_areas:
         zs = _sample(base, elev, df["lat"], df["lon"]) + 40

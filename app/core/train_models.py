@@ -1,7 +1,15 @@
+import os
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
+os.environ.setdefault('OMP_NUM_THREADS', '1')
 
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 
 import joblib
 import numpy as np

@@ -1,4 +1,4 @@
-import { BaseData, SimulationData, TerrainData, TimelineItem } from "../types";
+import { BaseData, SeriesData, SimulationData, TerrainData, TimelineItem } from "../types";
 
 const BASE_URL = "/api";
 
@@ -37,7 +37,7 @@ export async function fetchSeries(
   scale: number,
   lo: number,
   hi: number
-): Promise<{ timeline: TimelineItem[] }> {
+): Promise<SeriesData> {
   const params = new URLSearchParams({
     scale: scale.toString(),
     lo: lo.toString(),

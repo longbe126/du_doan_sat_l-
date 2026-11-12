@@ -110,3 +110,13 @@ export interface TimelineItem {
   total: number;
   max_score: number;
 }
+
+export interface SeriesData {
+  timeline: TimelineItem[];
+  scores_by_area?: Record<string, number[]>;
+  rain_by_area?: Record<string, number[]>;
+  max_scores?: number[];
+  max_rain?: number[];
+  n_high_areas?: number[];
+  high_cells?: number[];
+}

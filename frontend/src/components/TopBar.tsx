@@ -1,6 +1,18 @@
 import React from "react";
 import { useStore } from "../store/useStore";
-import { ChevronDown, Sliders } from "lucide-react";
+import { Sliders } from "lucide-react";
+
+const HI = "#ff5a52";
+const MI = "#f5b942";
+const LO = "#4ade80";
+
+const hh = (t: number) => `${t.toString().padStart(2, "0")}:00`;
+
+const MODEL_VI: Record<string, string> = {
+  logistic_regression: "Hồi quy logistic",
+  random_forest: "Rừng ngẫu nhiên",
+  xgboost: "XGBoost",
+};
 
 export const TopBar: React.FC = () => {
   const {
@@ -12,75 +24,65 @@ export const TopBar: React.FC = () => {
     setScenarioModalOpen,
   } = useStore();
 
-  const isHighAlert = (simData?.area_counts?.high && simData.area_counts.high > 0) || hour >= 20;
+  const t = hour;
+  const isHighAlert = (simData?.area_counts?.high && simData.area_counts.high > 0) || t >= 20;
   const isMidAlert = simData?.area_counts?.mid && simData.area_counts.mid > 0;
   const statusText = isHighAlert ? "Cảnh báo" : isMidAlert ? "Theo dõi" : "Bình thường";
-  const statusDotColor = isHighAlert ? "bg-[#ef4444]" : isMidAlert ? "bg-[#f59e0b]" : "bg-[#10b981]";
+  const statusDotColor = isHighAlert ? HI : isMidAlert ? MI : LO;
+
+  const modelName = baseData?.model_name || "xgboost";
+  const modelDisplay = MODEL_VI[modelName] || modelName;
 
   return (
-    <header className="relative w-full h-[54px] flex items-center justify-between px-4 z-20 shrink-0 select-none bg-[#090c12]/95 border-b border-white/[0.04]">
-      {/* Left: Navigation and Titles */}
-      <div className="flex items-center gap-4 h-full">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab("overview")}
-            className={`px-3.5 py-1 text-xs font-bold rounded-md transition-all ${
-              activeTab === "overview"
-                ? "bg-white text-slate-950 shadow-sm"
-                : "bg-slate-900/60 text-slate-300 border border-white/10 hover:border-white/20"
-            }`}
-          >
-            Tổng quan
-          </button>
-          <button
-            onClick={() => setActiveTab("ai")}
-            className={`px-3.5 py-1 text-xs font-semibold rounded-md transition-all ${
-              activeTab === "ai"
-                ? "bg-white text-slate-950 shadow-sm"
-                : "bg-slate-900/60 text-slate-300 border border-white/10 hover:border-white/20"
-            }`}
-          >
-            Đánh giá AI
-          </button>
-        </div>
-
-        <div className="leading-tight">
-          <h1 className="text-[15px] font-bold text-white tracking-tight">
-            Trung tâm giám sát nguy cơ sạt lở đất
-          </h1>
-          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-            Nam Trà My và Phước Sơn, Quảng Nam
-          </p>
-        </div>
+    <header className="relative w-full h-[54px] flex items-center justify-between px-4 z-20 shrink-0 select-none bg-transparent">
+      {/* Left: Navigation Tabs */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActiveTab("overview")}
+          className={`px-3.5 py-1 text-[0.76rem] rounded-md transition-all cursor-pointer ${
+            activeTab === "overview"
+              ? "bg-[#d4e88a] text-[#1b2208] font-bold shadow-sm"
+              : "bg-[rgba(34,36,40,0.85)] text-[#e8e9ec] border border-white/[0.1] hover:border-white/20"
+          }`}
+        >
+          Tổng quan
+        </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={`px-3.5 py-1 text-[0.76rem] rounded-md transition-all cursor-pointer ${
+            activeTab === "history"
+              ? "bg-[#d4e88a] text-[#1b2208] font-bold shadow-sm"
+              : "bg-[rgba(34,36,40,0.85)] text-[#e8e9ec] border border-white/[0.1] hover:border-white/20"
+          }`}
+        >
+          Lịch sử sạt lở
+        </button>
       </div>
 
-      {/* Center: Live Status Capsule Pill */}
-      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-white/10 shadow-lg backdrop-blur-md text-[10px] text-slate-300">
-        <div className="flex items-center gap-2 font-bold text-white">
-          <span className={`w-2 h-2 rounded-sm ${statusDotColor}`} />
-          <span>{statusText}</span>
+      {/* Center: Live Status Capsule Pill (Streamlit .status) */}
+      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-[rgba(34,36,40,0.7)] backdrop-blur-[18px] border border-white/[0.08] shadow-xl text-[0.82rem] text-[#8b8f98] pointer-events-none">
+        <div className="flex items-center gap-2 text-white font-medium">
+          <i
+            className="w-[9px] h-[9px] rounded-[2px]"
+            style={{ backgroundColor: statusDotColor }}
+          />
+          <b>{statusText}</b>
         </div>
-        <div className="font-mono text-slate-200">
-          <span className="font-bold text-white">{`${hour.toString().padStart(2, "0")}:00`}</span> · giờ thứ {hour}
-        </div>
-        <span className="text-slate-400">Dữ liệu mô phỏng</span>
-        <span className="text-slate-400">
-          Dữ liệu <span className="text-slate-200 font-mono">2026-10-31 11:49</span>
+        <span>
+          {hh(t)} · giờ thứ {t}
         </span>
-        <span className="text-slate-400">
-          Mô hình <span className="text-slate-200 font-mono">11:59</span>
-        </span>
+        <span>Dữ liệu mô phỏng</span>
+        <span>Mô hình {modelDisplay}</span>
       </div>
 
-      {/* Right: Scenario Adjust Button */}
+      {/* Right: Scenario Adjust Button (Streamlit .st-key-g_ctrl) */}
       <div className="flex items-center gap-3">
         <button
           onClick={() => setScenarioModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-900/80 border border-white/15 hover:border-white/30 text-xs font-semibold text-slate-200 hover:text-white transition-all shadow-md active:scale-95"
+          className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[rgba(34,36,40,0.85)] hover:bg-[rgba(50,54,60,0.95)] border border-white/[0.15] hover:border-white/30 text-[0.8rem] font-medium text-[#e8e9ec] hover:text-white transition-all shadow-md active:scale-95 cursor-pointer"
         >
-          <Sliders className="w-3.5 h-3.5 text-slate-400" />
-          <span>Điều chỉnh kịch bản</span>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          <Sliders className="w-3.5 h-3.5 text-[#d4e88a]" />
+          <span>Điều chỉnh kịch bản ▾</span>
         </button>
       </div>
     </header>

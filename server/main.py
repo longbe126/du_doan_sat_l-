@@ -135,42 +135,39 @@ def get_terrain():
     }
 
 
+def _num(val: Any, default: float) -> float:
+    if hasattr(val, "default"):
+        return float(val.default)
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 @app.get("/api/simulation")
 def get_simulation(
     hour: int = Query(24, ge=0, le=24),
     scale: float = Query(1.0, ge=0.5, le=2.0),
-    lo: float = Query(0.40, ge=0.05, le=0.95),
-    hi: float = Query(0.70, ge=0.05, le=0.95),
+    lo: float = Query(0.25, ge=0.05, le=0.95),
+    hi: float = Query(0.45, ge=0.05, le=0.95),
     rain_alert: float = Query(100.0, ge=30.0, le=400.0),
 ):
-    """Tính toán đánh giá nguy cơ sạt lở cho giờ được chỉ định theo kịch bản mưa."""
-    current_scale = scale * ramp(hour)
-    prev_hour = max(0, hour - 1)
-    prev_scale = scale * ramp(prev_hour)
+    """Tính toán đánh giá nguy cơ sạt lở cho giờ được chỉ định theo kịch bản mưa (dữ liệu thật từ mô hình AI)."""
+    h_int = int(_num(hour, 24))
+    scale_flt = _num(scale, 1.0)
+    lo_flt = _num(lo, 0.25)
+    hi_flt = _num(hi, 0.45)
+    alert_flt = _num(rain_alert, 100.0)
 
-    risk_curr, cells_curr, df_curr = compute(_BASE_DATA, current_scale, (lo, hi), _MODEL_OBJ)
-    _, _, df_prev = compute(_BASE_DATA, prev_scale, (lo, hi), _MODEL_OBJ)
+    current_scale = scale_flt * ramp(h_int)
+    prev_hour = max(0, h_int - 1)
+    prev_scale = scale_flt * ramp(prev_hour)
+
+    risk_curr, cells_curr, df_curr = compute(_BASE_DATA, current_scale, (lo_flt, hi_flt), _MODEL_OBJ)
+    _, _, df_prev = compute(_BASE_DATA, prev_scale, (lo_flt, hi_flt), _MODEL_OBJ)
 
     df = df_curr.copy()
-
-    # Bảng số liệu chuẩn hóa phù hợp với kịch bản giờ 24 như thiết kế
-    target_scores = {
-        "Trà Mai": 0.82,
-        "Trà Vân": 0.81,
-        "Trà Tập": 0.80,
-        "Phước Chánh": 0.71,
-        "Phước Xuân": 0.45,
-        "Trà Don": 0.43,
-        "Trà Leng": 0.42,
-        "Phước Năng": 0.35,
-        "Phước Mỹ": 0.32,
-        "Phước Đức": 0.30,
-        "Trà Linh": 0.28,
-        "Phước Công": 0.25,
-    }
-
-    ratio_curr = ramp(hour) / ramp(24)
-    ratio_prev = ramp(prev_hour) / ramp(24)
+    prev_scores = {r["name"]: float(r["score"]) for _, r in df_prev.iterrows()}
 
     scores_list = []
     prev_scores_list = []
@@ -178,16 +175,11 @@ def get_simulation(
     levels_list = []
 
     for idx, row in df.iterrows():
-        area_name = row["name"]
-        base_target = target_scores.get(area_name, float(row["score"]))
-        # Tính điểm động theo giờ kịch bản
-        s_curr = round(base_target * ratio_curr * scale, 2)
-        s_prev = round(base_target * ratio_prev * scale, 2)
-        d_val = round(s_curr - s_prev, 2)
-        if area_name == "Trà Tập" and hour == 24:
-            d_val = -0.01  # khớp đúng -0,01 của Trà Tập trong ảnh
-
-        lv = "Cao" if s_curr >= hi else ("Trung bình" if s_curr >= lo else "Thấp")
+        name = row["name"]
+        s_curr = round(float(row["score"]), 3)
+        s_prev = round(prev_scores.get(name, s_curr), 3)
+        d_val = round(s_curr - s_prev, 3)
+        lv = "Cao" if s_curr >= hi_flt else ("Trung bình" if s_curr >= lo_flt else "Thấp")
         scores_list.append(s_curr)
         prev_scores_list.append(s_prev)
         deltas_list.append(d_val)
@@ -197,111 +189,101 @@ def get_simulation(
     df["prev_score"] = prev_scores_list
     df["delta_score"] = deltas_list
     df["level"] = levels_list
-
-    # Gán lượng mưa chuẩn hóa
-    rain_map = {
-        "Trà Mai": 113.1,
-        "Trà Tập": 134.0,
-        "Trà Vân": 115.0,
-        "Phước Chánh": 108.0,
-    }
-    df["rain"] = [rain_map.get(name, float(r)) * (hour / 24.0) for name, r in zip(df["name"], df["rain"])]
+    df["rain"] = [round(float(r), 1) for r in df["rain"]]
 
     areas_records = df.to_dict(orient="records")
 
-    # Phân bố ô lưới chuẩn theo kịch bản: Thấp 151, Trung bình 154, Cao 19 (tổng 324)
-    factor = hour / 24.0
-    high_cells = int(round(19 * factor * scale))
-    mid_cells = int(round(154 * factor * scale))
-    low_cells = 324 - high_cells - mid_cells
+    # Phân bố ô lưới tính trực tiếp từ mảng cells_curr
+    cells_arr = np.asarray(cells_curr)
+    low_cells = int((cells_arr < lo_flt).sum())
+    mid_cells = int(((cells_arr >= lo_flt) & (cells_arr < hi_flt)).sum())
+    high_cells = int((cells_arr >= hi_flt).sum())
 
-    high_areas = int(sum(1 for s in scores_list if s >= hi))
-    mid_areas = int(sum(1 for s in scores_list if lo <= s < hi))
+    high_areas = int(sum(1 for s in scores_list if s >= hi_flt))
+    mid_areas = int(sum(1 for s in scores_list if lo_flt <= s < hi_flt))
     low_areas = len(df) - high_areas - mid_areas
 
-    # Trà Mai luôn là khu vực cao nhất toàn vùng ở giờ 24
+    # Khu vực điểm nguy cơ cao nhất
+    max_idx = int(df["score"].idxmax())
+    max_row = df.iloc[max_idx]
     max_area = {
-        "name": "Trà Mai",
-        "code": "KV01",
-        "score": 0.82 if hour == 24 else float(df[df["name"] == "Trà Mai"]["score"].values[0]),
-        "delta": 0.01,
-        "level": "Cao" if hour >= 20 else "Trung bình",
+        "name": max_row["name"],
+        "code": max_row["code"],
+        "score": float(max_row["score"]),
+        "delta": float(max_row["delta_score"]),
+        "level": max_row["level"],
     }
 
+    # Khu vực lượng mưa cao nhất
+    max_rain_idx = int(df["rain"].idxmax())
+    max_rain_row = df.iloc[max_rain_idx]
+    prev_rain = float(df_prev.loc[df_prev["name"] == max_rain_row["name"], "rain"].values[0])
     max_rain = {
-        "name": "Trà Tập",
-        "code": "KV06",
-        "rain": 134.0 if hour == 24 else 134.0 * factor,
-        "delta": 5.0,
+        "name": max_rain_row["name"],
+        "code": max_rain_row["code"],
+        "rain": float(max_rain_row["rain"]),
+        "delta": round(float(max_rain_row["rain"]) - prev_rain, 1),
     }
 
+    # Top 3 nguy cơ
+    top3_df = df.sort_values("score", ascending=False).head(3)
     top3 = [
-        {"name": "Trà Mai", "code": "KV01", "score": 0.82, "delta": 0.01, "level": "Cao"},
-        {"name": "Trà Vân", "code": "KV04", "score": 0.81, "delta": 0.01, "level": "Cao"},
-        {"name": "Trà Tập", "code": "KV06", "score": 0.80, "delta": -0.01, "level": "Cao"},
+        {
+            "name": r["name"],
+            "code": r["code"],
+            "score": float(r["score"]),
+            "delta": float(r["delta_score"]),
+            "level": r["level"],
+        }
+        for _, r in top3_df.iterrows()
     ]
 
-    # Nhật ký sự kiện chính xác như trong ảnh
-    events_log = [
-        {
-            "hour": 24,
-            "time": "24:00",
-            "area": "Trà Vân",
-            "type": "rain_alert",
-            "text": "Trà Vân vượt ngưỡng mưa chú ý",
-            "sub": "Mưa 24 giờ 100 mm, ngưỡng 100 mm",
-            "color": "#0ea5e9",
-        },
-        {
-            "hour": 24,
-            "time": "24:00",
-            "area": "Phước Chánh",
-            "type": "risk_change",
-            "text": "Phước Chánh lên mức Cao",
-            "sub": "Điểm nguy cơ 0,71",
-            "color": "#ef4444",
-        },
-        {
-            "hour": 21,
-            "time": "21:00",
-            "area": "Trà Mai",
-            "type": "rain_alert",
-            "text": "Trà Mai vượt ngưỡng mưa chú ý",
-            "sub": "Mưa 24 giờ 101 mm, ngưỡng 100 mm",
-            "color": "#0ea5e9",
-        },
-        {
-            "hour": 20,
-            "time": "20:00",
-            "area": "Phước Xuân",
-            "type": "risk_change",
-            "text": "Phước Xuân lên mức Trung bình",
-            "sub": "Điểm nguy cơ 0,41",
-            "color": "#f59e0b",
-        },
-        {
-            "hour": 17,
-            "time": "17:00",
-            "area": "Trà Don",
-            "type": "rain_alert",
-            "text": "Trà Don vượt ngưỡng mưa chú ý",
-            "sub": "Mưa 24 giờ 100 mm, ngưỡng 100 mm",
-            "color": "#0ea5e9",
-        },
-    ]
+    # Sự kiện sinh động học theo diễn biến qua các giờ
+    active_events = []
+    prev_d = None
+    for h in range(1, h_int + 1):
+        if prev_d is None:
+            _, _, prev_d = compute(_BASE_DATA, scale_flt * ramp(h - 1), (lo_flt, hi_flt), _MODEL_OBJ)
+        if h == h_int:
+            d_h = df_curr
+        else:
+            _, _, d_h = compute(_BASE_DATA, scale_flt * ramp(h), (lo_flt, hi_flt), _MODEL_OBJ)
+        for (_, r_now), (_, r_old) in zip(d_h.iterrows(), prev_d.iterrows()):
+            if r_now["level"] != r_old["level"]:
+                color = "#ef4444" if r_now["level"] == "Cao" else ("#f59e0b" if r_now["level"] == "Trung bình" else "#10b981")
+                tx = f"{'lên' if r_now['score'] > r_old['score'] else 'xuống'} mức {r_now['level']}"
+                active_events.append({
+                    "hour": h,
+                    "time": f"{h:02d}:00",
+                    "area": r_now["name"],
+                    "type": "risk_change",
+                    "text": f"{r_now['name']} {tx}",
+                    "sub": f"Điểm nguy cơ {r_now['score']:.2f}".replace(".", ","),
+                    "color": color,
+                })
+            if r_now["rain"] >= alert_flt and r_old["rain"] < alert_flt:
+                active_events.append({
+                    "hour": h,
+                    "time": f"{h:02d}:00",
+                    "area": r_now["name"],
+                    "type": "rain_alert",
+                    "text": f"{r_now['name']} vượt ngưỡng mưa chú ý",
+                    "sub": f"Mưa 24 giờ {r_now['rain']:.0f} mm, ngưỡng {alert_flt:.0f} mm",
+                    "color": "#0ea5e9",
+                })
+        prev_d = d_h
+    active_events.sort(key=lambda e: (-e["hour"], e["area"]))
 
-    # Lọc sự kiện theo giờ đang xem
-    active_events = [e for e in events_log if e["hour"] <= hour]
+    rain_exceeded = int((df["rain"] >= alert_flt).sum())
 
-    # Tạo mảng nguy cơ lưới 5184 điểm
     risk_flat = [round(float(v), 3) for v in risk_curr.ravel()]
     cells_flat = [round(float(v), 3) for v in cells_curr]
 
     return {
-        "hour": hour,
-        "time_str": f"{hour:02d}:00",
-        "scale": scale,
-        "thresholds": {"low": lo, "high": hi},
+        "hour": h_int,
+        "time_str": f"{h_int:02d}:00",
+        "scale": scale_flt,
+        "thresholds": {"low": lo_flt, "high": hi_flt},
         "areas": areas_records,
         "grid_risk": risk_flat,
         "grid_cells": cells_flat,
@@ -309,7 +291,7 @@ def get_simulation(
             "low": low_cells,
             "mid": mid_cells,
             "high": high_cells,
-            "total": 324,
+            "total": len(cells_flat),
         },
         "area_counts": {
             "high": high_areas,
@@ -320,35 +302,66 @@ def get_simulation(
         "max_risk_area": max_area,
         "max_rain_area": max_rain,
         "top3_risk": top3,
-        "rain_exceeded_count": 4 if hour >= 24 else max(1, int(4 * factor)),
-        "events_log": active_events,
-        "total_events": 10 if hour >= 24 else len(active_events),
+        "rain_exceeded_count": rain_exceeded,
+        "events_log": active_events[:6],
+        "total_events": len(active_events),
     }
 
 
 @app.get("/api/series")
 def get_series(
     scale: float = Query(1.0, ge=0.5, le=2.0),
-    lo: float = Query(0.40, ge=0.05, le=0.95),
-    hi: float = Query(0.70, ge=0.05, le=0.95),
+    lo: float = Query(0.25, ge=0.05, le=0.95),
+    hi: float = Query(0.45, ge=0.05, le=0.95),
 ):
-    """Tính sẵn chuỗi phân bố 24 giờ để thanh trượt thời gian render mượt mà."""
+    """Tính sẵn chuỗi phân bố 24 giờ từ mô hình AI thật để thanh trượt thời gian render mượt mà."""
+    scale_flt = _num(scale, 1.0)
+    lo_flt = _num(lo, 0.25)
+    hi_flt = _num(hi, 0.45)
+
     timeline = []
+    scores_by_area: Dict[str, List[float]] = {name: [] for _, name, _, _, _ in AREAS}
+    rain_by_area: Dict[str, List[float]] = {name: [] for _, name, _, _, _ in AREAS}
+    max_scores: List[float] = []
+    max_rain: List[float] = []
+    n_high_areas: List[int] = []
+    high_cells: List[int] = []
+
     for h in range(HOURS + 1):
-        f = h / 24.0
-        high_c = int(round(19 * f * scale))
-        mid_c = int(round(154 * f * scale))
-        low_c = 324 - high_c - mid_c
+        _, cells_h, df_h = compute(_BASE_DATA, scale_flt * ramp(h), (lo_flt, hi_flt), _MODEL_OBJ)
+        c_arr = np.asarray(cells_h)
+        low_c = int((c_arr < lo_flt).sum())
+        mid_c = int(((c_arr >= lo_flt) & (c_arr < hi_flt)).sum())
+        high_c = int((c_arr >= hi_flt).sum())
+        high_cells.append(high_c)
+        max_scores.append(round(float(df_h["score"].max()), 3))
+        max_rain.append(round(float(df_h["rain"].max()), 1))
+        n_high_areas.append(int((df_h["level"] == "Cao").sum()))
+
+        for _, r in df_h.iterrows():
+            area_name = str(r["name"])
+            if area_name in scores_by_area:
+                scores_by_area[area_name].append(round(float(r["score"]), 3))
+                rain_by_area[area_name].append(round(float(r["rain"]), 1))
+
         timeline.append({
             "hour": h,
             "time": f"{h:02d}:00",
             "low": low_c,
             "mid": mid_c,
             "high": high_c,
-            "total": 324,
-            "max_score": round(0.30 + 0.52 * f * scale, 2),
+            "total": len(c_arr),
+            "max_score": round(float(df_h["score"].max()), 2),
         })
-    return {"timeline": timeline}
+    return {
+        "timeline": timeline,
+        "scores_by_area": scores_by_area,
+        "rain_by_area": rain_by_area,
+        "max_scores": max_scores,
+        "max_rain": max_rain,
+        "n_high_areas": n_high_areas,
+        "high_cells": high_cells,
+    }
 
 
 @app.get("/api/models")
@@ -379,7 +392,7 @@ def get_db_events():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM landslide_events ORDER BY id DESC LIMIT 50")
+    c.execute("SELECT * FROM landslide_events ORDER BY event_date DESC LIMIT 50")
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return {"events": rows}

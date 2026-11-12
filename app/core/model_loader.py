@@ -6,7 +6,10 @@ from pathlib import Path
 
 import joblib
 
-from core import train_models
+try:
+    from . import train_models
+except ImportError:
+    from core import train_models
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = ROOT / "models"

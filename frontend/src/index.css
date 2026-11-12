@@ -16,9 +16,10 @@ body {
   padding: 0;
   width: 100vw;
   height: 100vh;
-  background-color: #06090e;
-  color: #e2e8f0;
+  background-color: #07080b;
+  color: #e8e9ec;
   font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
 }
 
 /* Hide scrollbars for clean HUD look */

@@ -9,16 +9,68 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_PATH = ROOT / "reports" / "evaluation.json"
 
-st.set_page_config(
-    page_title="AI Evaluation",
-    page_icon="",
-    layout="wide",
-)
+if not st.session_state.get("_root_navigation", False):
+    st.set_page_config(
+        page_title="AI Evaluation",
+        page_icon="??",
+        layout="wide",
+    )
 
-st.title("AI Model Evaluation")
-st.caption(
-    "Kết quả được đọc từ báo cáo sinh ra bởi pipeline huấn luyện."
-)
+CSS_AI = """
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap');
+html, body, .stApp {
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif !important;
+    background: #07080b !important;
+    color: #e8e9ec !important;
+}
+[data-testid="stMetricValue"] {
+    font-size: 1.8rem !important;
+    font-weight: 300 !important;
+    color: #ffffff !important;
+}
+div[data-testid="stMetric"] {
+    background: rgba(34, 36, 40, 0.58) !important;
+    backdrop-filter: blur(18px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 18px !important;
+    padding: 14px 18px !important;
+}
+.stButton button {
+    background: rgba(34, 36, 40, 0.85) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 999px !important;
+    color: #e8e9ec !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+}
+.stButton button[data-testid="stBaseButton-primary"], .stButton button[kind="primary"] {
+    background: #d4e88a !important;
+    color: #1b2208 !important;
+    border-color: #d4e88a !important;
+    font-weight: 600 !important;
+}
+[data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {
+    display: none !important;
+}
+"""
+st.markdown(f"<style>{CSS_AI}</style>", unsafe_allow_html=True)
+
+col_hdr1, col_hdr2 = st.columns([2.5, 2])
+with col_hdr1:
+    st.title("🧠 Đánh giá Mô hình Học máy (AI Evaluation)")
+    st.caption("Kết quả được đọc từ báo cáo sinh ra bởi pipeline huấn luyện (reports/evaluation.json).")
+with col_hdr2:
+    st.write("")
+    n1, n2, n3 = st.columns([1, 1.2, 1.2])
+    with n1:
+        if st.button("Tổng quan", key="nav_overview"):
+            st.switch_page("app/main.py")
+    with n2:
+        if st.button("Lịch sử sạt lở 📜", key="nav_hist"):
+            st.switch_page("app/pages/3_Lich_Su_Sat_Lo.py")
+    with n3:
+        if st.button("Đánh giá AI 🧠", key="nav_ai", type="primary"):
+            pass
 
 if not REPORT_PATH.exists():
     st.warning(

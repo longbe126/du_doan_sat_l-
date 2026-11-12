@@ -7,5 +7,11 @@ echo =================================================================
 echo Dang khoi dong may chu backend FastAPI va giao dien React 3D...
 echo Trinh duyet se tu dong mo tai: http://localhost:8000
 echo.
-".\venv\Scripts\python.exe" run_app.py
+if exist ".\.venv\Scripts\python.exe" (
+    ".\.venv\Scripts\python.exe" run_app.py
+) else if exist ".\venv\Scripts\python.exe" (
+    ".\venv\Scripts\python.exe" run_app.py
+) else (
+    python run_app.py
+)
 pause

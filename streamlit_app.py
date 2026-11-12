@@ -10,6 +10,11 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 
+if __name__ == "__main__" and (not getattr(st, "runtime", None) or not st.runtime.exists()):
+    from streamlit.web import cli as stcli
+    sys.argv = ["streamlit", "run", str(Path(__file__).resolve())] + sys.argv[1:]
+    sys.exit(stcli.main())
+
 st.set_page_config(
     page_title="Trung tâm giám sát nguy cơ sạt lở đất",
     page_icon="⛰️",
@@ -21,13 +26,9 @@ st.session_state["_root_navigation"] = True
 page = st.navigation(
     [
         st.Page("app/main.py", title="Tổng quan", icon=":material/landscape:", default=True),
+        st.Page("app/pages/3_Lich_Su_Sat_Lo.py", title="Lịch sử sạt lở", icon=":material/history:"),
         st.Page("app/pages/2_AI_Evaluation.py", title="Đánh giá AI", icon=":material/analytics:"),
     ],
     position="top",
 )
 page.run()
-
-if __name__ == "__main__" and not getattr(st, "runtime", None) or not st.runtime.exists():
-    from streamlit.web import cli as stcli
-    sys.argv = ["streamlit", "run", str(Path(__file__).resolve())]
-    sys.exit(stcli.main())

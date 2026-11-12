@@ -7,3 +7,9 @@ textColor = "#e8e9ec"
 
 [server]
 runOnSave = true
+
+[client]
+showSidebarNavigation = false
+
+[browser]
+gatherUsageStats = false

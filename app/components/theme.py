@@ -36,7 +36,7 @@ def level_of(score: float, thr) -> str:
     return "Cao" if score >= thr[1] else ("Trung bình" if score >= thr[0] else "Thấp")
 
 
-def base_layout(height: int) -> dict:
+def base_layout(height: int | None) -> dict:
     return dict(
         height=height, margin=dict(l=4, r=4, t=6, b=4),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",

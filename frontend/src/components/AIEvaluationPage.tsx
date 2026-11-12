@@ -35,34 +35,65 @@ export const AIEvaluationPage: React.FC = () => {
     },
   };
 
-  const featureImportance = modelsReport?.feature_importance || {
-    rainfall_mm: 0.38,
-    slope_deg: 0.32,
-    soil_moisture: 0.16,
-    landcover: 0.09,
-    elevation_m: 0.05,
+  const bestModelKey = modelsReport?.best_model || "logistic_regression";
+
+  // Parse feature importance from modelsReport cleanly
+  const rawList =
+    modelsReport?.feature_importance?.random_forest ||
+    modelsReport?.feature_importance?.xgboost ||
+    modelsReport?.feature_importance?.logistic_regression;
+
+  let featureImportance: Record<string, number> = {
+    slope_deg: 0.42,
+    rainfall_mm: 0.20,
+    soil_moisture: 0.18,
+    elevation_m: 0.17,
+    landcover: 0.03,
   };
+
+  if (Array.isArray(rawList) && rawList.length > 0) {
+    const agg: Record<string, number> = {};
+    let total = 0;
+    for (const item of rawList) {
+      let rawFeat = String(item.feature || "")
+        .replace(/^numeric__/, "")
+        .replace(/^categorical__/, "");
+      if (rawFeat.startsWith("landcover")) {
+        rawFeat = "landcover";
+      }
+      const val = Math.abs(Number(item.importance) || 0);
+      agg[rawFeat] = (agg[rawFeat] || 0) + val;
+      total += val;
+    }
+    if (total > 0) {
+      featureImportance = {};
+      const sortedKeys = Object.keys(agg).sort((a, b) => agg[b] - agg[a]);
+      for (const k of sortedKeys) {
+        featureImportance[k] = agg[k] / total;
+      }
+    }
+  }
 
   const modelCards = [
     {
       id: "logistic_regression",
       name: "Hồi quy logistic",
       type: "Baseline Tuyến tính",
-      isBest: true,
+      isBest: bestModelKey === "logistic_regression",
       data: metrics.logistic_regression,
     },
     {
       id: "random_forest",
       name: "Rừng ngẫu nhiên",
       type: "Ensemble Cây",
-      isBest: false,
+      isBest: bestModelKey === "random_forest",
       data: metrics.random_forest,
     },
     {
       id: "xgboost",
       name: "XGBoost",
       type: "Gradient Boosting",
-      isBest: false,
+      isBest: bestModelKey === "xgboost",
       data: metrics.xgboost,
     },
   ];
@@ -156,15 +187,15 @@ export const AIEvaluationPage: React.FC = () => {
           </p>
 
           <div className="flex flex-col gap-2.5 mt-2">
-            {Object.entries(featureImportance).map(([feat, val]: [string, any]) => {
+            {Object.entries(featureImportance).map(([feat, val]: [string, number]) => {
               const labelMap: Record<string, string> = {
-                rainfall_mm: "Lượng mưa tích lũy 24h (rainfall_mm)",
                 slope_deg: "Độ dốc địa hình (slope_deg)",
+                rainfall_mm: "Lượng mưa tích lũy 24h (rainfall_mm)",
                 soil_moisture: "Độ ẩm đất (soil_moisture)",
-                landcover: "Lớp phủ thực vật (landcover)",
                 elevation_m: "Độ cao tuyệt đối (elevation_m)",
+                landcover: "Lớp phủ thực vật (landcover)",
               };
-              const pct = Math.round(Number(val) * 100);
+              const pct = Math.round(val * 100);
 
               return (
                 <div key={feat} className="flex flex-col gap-1 text-xs">

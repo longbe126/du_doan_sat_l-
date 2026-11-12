@@ -1,266 +1,381 @@
 import React from "react";
 import { useStore } from "../store/useStore";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+
+const HI = "#ff5a52";
+const MI = "#f5b942";
+const LO = "#4ade80";
+
+const vn = (x: number, d: number = 2) => x.toFixed(d).replace(".", ",");
+const hh = (t: number) => `${t.toString().padStart(2, "0")}:00`;
 
 export const LeftPanel: React.FC = () => {
   const {
     selectedAreaName,
     setSelectedArea,
+    setActiveTab,
     simData,
     baseData,
     hour,
-    modelsReport,
+    thresholdLow,
+    thresholdHigh,
+    rainAlert,
   } = useStore();
 
   const areas = simData?.areas || baseData?.areas || [];
-  const currentArea = areas.find((a) => a.name === selectedAreaName) || areas[0] || {
-    name: "Trà Mai",
-    code: "KV01",
-    lat: 15.11,
-    lon: 108.01,
-    elev: 531,
-    slope: 24.5,
-    rain: 113.1,
-    cover: "Rừng tự nhiên",
-    level: "Cao",
-    score: 0.82,
+  const names = areas.map((a) => a.name);
+  const currentArea = areas.find((a) => a.name === selectedAreaName) || areas[0];
+
+  const t = hour;
+  const isSelected = Boolean(selectedAreaName && names.includes(selectedAreaName));
+
+  const lvl = (score: number) =>
+    score >= thresholdHigh ? "Cao" : score >= thresholdLow ? "Trung bình" : "Thấp";
+  const lcol = (score: number) =>
+    score >= thresholdHigh ? HI : score >= thresholdLow ? MI : LO;
+
+  // Active rain alert rows
+  const alertRows = areas
+    .filter((a) => (a.rain || 0) >= rainAlert)
+    .sort((a, b) => (b.rain || 0) - (a.rain || 0));
+
+  // Historical events near selected area
+  const allEvents = baseData?.events || [];
+  const nearEvents = isSelected && currentArea
+    ? allEvents.filter(
+        (ev) =>
+          Math.abs(ev.lat - currentArea.lat) <= 0.08 &&
+          Math.abs(ev.lon - currentArea.lon) <= 0.08
+      )
+    : allEvents;
+
+  const lastEventDate = nearEvents.length > 0 ? nearEvents[0].date : "chưa ghi nhận";
+
+  // Simulation events log
+  const simEvents = simData?.events_log?.length
+    ? simData.events_log
+    : [
+        {
+          time: hh(t),
+          text: `${currentArea?.name || "Trà Mai"} lên mức ${currentArea?.level || "Cao"}`,
+          sub: `Điểm nguy cơ ${vn(currentArea?.score || 0.82)}`,
+          color: lcol(currentArea?.score || 0.82),
+        },
+      ];
+
+  // Operation recommendation when area is selected
+  let opStatus = "Ổn định";
+  let opColor = LO;
+  let opNote = "Các chỉ số đang trong ngưỡng theo dõi thường xuyên.";
+
+  if (currentArea) {
+    const rainVal = currentArea.rain || 0;
+    const scoreVal = currentArea.score || 0;
+    if (scoreVal >= thresholdHigh && rainVal >= rainAlert) {
+      opStatus = "Cảnh báo khẩn";
+      opColor = HI;
+      opNote =
+        "Nguy cơ và lượng mưa đang cao. Ưu tiên kiểm tra tuyến đường và cộng đồng tại khu vực.";
+    } else if (scoreVal >= thresholdLow || rainVal >= rainAlert) {
+      opStatus = "Theo dõi chặt";
+      opColor = MI;
+      opNote =
+        "Một hoặc nhiều điều kiện vượt ngưỡng. Tăng tần suất quan sát và theo dõi mưa tiếp theo.";
+    }
+  }
+
+  const trend = currentArea?.delta_score || 0;
+  const trendText =
+    trend > 0.0005 ? `Tăng +${vn(trend)}` : trend < -0.0005 ? `Giảm ${vn(trend)}` : "Ổn định";
+
+  // 4 station stats
+  const avgRain = areas.length
+    ? Math.round(areas.reduce((acc, a) => acc + (a.rain || 0), 0) / areas.length)
+    : 0;
+  const avgSlope = areas.length
+    ? (areas.reduce((acc, a) => acc + (a.slope || 0), 0) / areas.length).toFixed(1)
+    : "0.0";
+
+  const maxArea = simData?.max_risk_area || {
+    name: currentArea?.name || "Trà Mai",
+    score: currentArea?.score || 0.82,
   };
-
-  const isCurrentHigh = (currentArea?.score || 0) >= 0.70 || currentArea?.level === "Cao" || currentArea?.name === "Trà Mai";
-  const isCurrentMid = (currentArea?.score || 0) >= 0.40 && !isCurrentHigh;
-
-  const levelColor = isCurrentHigh ? "text-[#ef4444]" : isCurrentMid ? "text-[#f59e0b]" : "text-[#10b981]";
-  const levelDot = isCurrentHigh ? "bg-[#ef4444]" : isCurrentMid ? "bg-[#f59e0b]" : "bg-[#10b981]";
-  const levelText = isCurrentHigh ? "Cao" : isCurrentMid ? "Trung bình" : "Thấp";
-
-  const defaultEvents = [
-    {
-      time: "24:00",
-      text: "Trà Vân vượt ngưỡng mưa chú ý",
-      sub: "Mưa 24 giờ 100 mm, ngưỡng 100 mm",
-      color: "#0ea5e9",
-    },
-    {
-      time: "24:00",
-      text: "Phước Chánh lên mức Cao",
-      sub: "Điểm nguy cơ 0,71",
-      color: "#ef4444",
-    },
-    {
-      time: "21:00",
-      text: "Trà Mai vượt ngưỡng mưa chú ý",
-      sub: "Mưa 24 giờ 101 mm, ngưỡng 100 mm",
-      color: "#0ea5e9",
-    },
-    {
-      time: "20:00",
-      text: "Phước Xuân lên mức Trung bình",
-      sub: "Điểm nguy cơ 0,41",
-      color: "#f59e0b",
-    },
-    {
-      time: "17:00",
-      text: "Trà Don vượt ngưỡng mưa chú ý",
-      sub: "Mưa 24 giờ 100 mm, ngưỡng 100 mm",
-      color: "#0ea5e9",
-    },
-  ];
-
-  const simEvents = simData?.events_log?.length ? simData.events_log : defaultEvents;
-
-  // AI model metrics
-  const metrics = modelsReport?.metrics?.logistic_regression || {
-    accuracy: 0.733,
-    precision: 0.75,
-    recall: 0.70,
-    f1: 0.73,
-    roc_auc: 0.809,
+  const maxRainArea = simData?.max_rain_area || {
+    name: currentArea?.name || "Trà Mai",
+    rain: currentArea?.rain || 113,
   };
-
-  const rfAuc = modelsReport?.metrics?.random_forest?.roc_auc || 0.784;
-  const xgbAuc = modelsReport?.metrics?.xgboost?.roc_auc || 0.790;
-  const lrAuc = metrics.roc_auc || 0.809;
 
   return (
-    <aside className="w-[305px] h-full flex flex-col gap-2 p-2 overflow-y-auto no-scrollbar z-10 shrink-0 select-none">
-      {/* 1. Hồ sơ khu vực */}
-      <div className="rounded-xl bg-slate-900/70 border border-white/[0.09] p-3 backdrop-blur-md shadow-xl flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200">Hồ sơ khu vực</span>
-          <span className="text-[11px] text-slate-400 font-mono">
-            {`giờ ${hour.toString().padStart(2, "0")}:00`}
-          </span>
+    <aside className="w-full flex flex-col gap-3 select-none text-[#e8e9ec] font-sans pb-4">
+      {/* Brand Header */}
+      <div className="px-1 pt-1 leading-tight shrink-0">
+        <b className="block font-medium text-[1.05rem] text-[#e8e9ec] tracking-tight">
+          Trung tâm giám sát nguy cơ sạt lở đất
+        </b>
+        <span className="block text-[#8b8f98] text-[0.78rem] mt-0.5">
+          Nam Trà My và Phước Sơn, Quảng Nam
+        </span>
+      </div>
+
+      {/* 1. Hồ sơ khu vực (g_prof) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Hồ sơ khu vực</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">giờ {hh(t)}</small>
         </div>
 
-        {/* Custom Styled Select Dropdown */}
-        <div className="relative">
+        {/* Commune Selectbox */}
+        <div className="px-3.5 pt-2.5 pb-1.5 flex items-center gap-2">
           <select
             value={selectedAreaName}
             onChange={(e) => setSelectedArea(e.target.value)}
-            className="w-full h-7 appearance-none bg-slate-800/90 border border-white/15 rounded-lg px-3 text-[11px] font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer shadow-sm"
+            className="flex-1 h-9 bg-white/[0.05] border-0 rounded-xl px-3 text-[0.88rem] text-[#e8e9ec] focus:outline-none focus:ring-1 focus:ring-[#d4e88a] cursor-pointer"
           >
-            {areas.length > 0 ? (
-              areas.map((a) => (
-                <option key={a.code} value={a.name} className="bg-slate-900 text-white font-medium">
-                  {a.name}
-                </option>
-              ))
-            ) : (
-              <option value="Trà Mai">Trà Mai</option>
-            )}
+            {names.map((name) => (
+              <option key={name} value={name} className="bg-[#17191d] text-white">
+                {name}
+              </option>
+            ))}
           </select>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+          {isSelected && (
+            <button
+              onClick={() => setSelectedArea("")}
+              className="px-2.5 py-1 text-[0.72rem] rounded-lg bg-white/[0.05] hover:bg-white/10 text-[#8b8f98] hover:text-white transition-all cursor-pointer whitespace-nowrap"
+              title="Xem tổng quan toàn vùng"
+            >
+              Tổng quan
+            </button>
+          )}
         </div>
 
-        {/* Details Key-Value Table */}
-        <div className="flex flex-col text-[11px] divide-y divide-white/[0.06]">
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Mức hiện tại</span>
-            <span className={`flex items-center gap-1.5 font-bold ${levelColor}`}>
-              <span className={`w-2 h-2 rounded-sm ${levelDot}`} />
-              {levelText}
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Mã khu vực</span>
-            <span className="font-mono text-slate-200">{currentArea?.code || "KV01"}</span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Vị trí</span>
-            <span className="font-mono text-slate-200">
-              {`${(currentArea?.lat || 15.11).toFixed(2).replace(".", ",")}°B, ${(currentArea?.lon || 108.01).toFixed(2).replace(".", ",")}°Đ`}
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Độ cao</span>
-            <span className="font-mono text-slate-200">{`${Math.round(currentArea?.elev || 531)} m`}</span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Độ dốc</span>
-            <span className="font-mono text-slate-200">{(currentArea?.slope || 24.5).toFixed(1)}°</span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Mưa 24 giờ</span>
-            <span className="font-mono text-cyan-400 font-semibold">
-              {(currentArea?.rain || 113.1).toFixed(1)} mm
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-[3px]">
-            <span className="text-slate-400">Lớp phủ</span>
-            <span className="text-slate-200">{currentArea?.cover || "Rừng tự nhiên"}</span>
-          </div>
+        {/* Key-Value Metrics Table */}
+        <div className="flex flex-col text-[0.84rem]">
+          {isSelected && currentArea ? (
+            <>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Mức hiện tại</span>
+                <span style={{ color: lcol(currentArea.score || 0) }} className="font-medium">
+                  ■ {lvl(currentArea.score || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Mã khu vực</span>
+                <span className="font-mono">{currentArea.code}</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Vị trí</span>
+                <span>
+                  {vn(currentArea.lat)}°B, {vn(currentArea.lon)}°Đ
+                </span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Độ cao</span>
+                <span>{Math.round(currentArea.elev)} m</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Độ dốc</span>
+                <span>{vn(currentArea.slope, 1)}°</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Mưa 24 giờ</span>
+                <span>{vn(currentArea.rain || 0, 1)} mm</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Lớp phủ</span>
+                <span>{currentArea.cover}</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px]">
+                <span className="text-[#8b8f98]">Xu hướng</span>
+                <span
+                  style={{ color: trend > 0.0005 ? "#ff6b6b" : "#8b8f98" }}
+                  className="font-medium font-mono"
+                >
+                  {trendText}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Chế độ quan sát</span>
+                <span>Tổng quan khu vực</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Điểm giám sát</span>
+                <span>{areas.length} khu vực</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Mức cao nhất</span>
+                <span style={{ color: lcol(maxArea.score) }} className="font-medium">
+                  ■ {lvl(maxArea.score)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Khu vực chú ý</span>
+                <span>{maxArea.name}</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px] border-b border-white/[0.05]">
+                <span className="text-[#8b8f98]">Điểm nguy cơ cao nhất</span>
+                <span>{vn(maxArea.score)}</span>
+              </div>
+              <div className="flex justify-between items-center px-4 py-1.5 min-h-[32px]">
+                <span className="text-[#8b8f98]">Mưa giờ cao nhất</span>
+                <span>{Math.round(maxRainArea.rain)} mm</span>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* 2 Quick Metric Boxes */}
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <div className="rounded-lg bg-slate-800/50 border border-white/5 p-2 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span>Sạt lở lịch sử</span>
-              <ArrowUpRight className="w-3 h-3 text-slate-500" />
+        {/* Operational Status Callout for selected area (neatly docked) */}
+        {isSelected && currentArea && (
+          <div className="p-3 bg-white/[0.025] border-t border-white/[0.06] text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[#8b8f98] text-[0.72rem]">Tình trạng vận hành:</span>
+              <span
+                className="text-[0.68rem] px-2 py-0.5 rounded-full border font-medium"
+                style={{
+                  color: opColor,
+                  borderColor: `${opColor}55`,
+                  backgroundColor: `${opColor}18`,
+                }}
+              >
+                {opStatus}
+              </span>
             </div>
-            <div className="text-xl font-bold font-mono text-white mt-1">7</div>
-            <div className="text-[9px] text-slate-500">gần nhất 2024-10-04</div>
+            <p className="text-[0.72rem] text-[#c8cbd2] leading-relaxed">
+              {opNote}
+            </p>
           </div>
+        )}
+      </div>
 
-          <div className="rounded-lg bg-slate-800/50 border border-white/5 p-2 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span>Sự kiện</span>
-              <ArrowUpRight className="w-3 h-3 text-slate-500" />
-            </div>
-            <div className="text-xl font-bold font-mono text-white mt-1">10</div>
-            <div className="text-[9px] text-slate-500">{`đến ${hour.toString().padStart(2, "0")}:00`}</div>
+      {/* 2. Hai thẻ mini (.two) */}
+      <div className="grid grid-cols-2 gap-2 shrink-0">
+        <button
+          onClick={() => setActiveTab("history")}
+          className="h-[92px] rounded-[16px] bg-[rgba(34,36,40,0.58)] hover:bg-[rgba(50,54,60,0.7)] backdrop-blur-[18px] border border-white/[0.08] hover:border-[#d4e88a]/40 p-3 flex flex-col justify-between text-left transition-all cursor-pointer group"
+          title="Bấm để xem danh sách 46 sự kiện sạt lở lịch sử"
+        >
+          <div className="flex justify-between text-[0.85rem] text-[#d6d8dc] w-full">
+            <span>Sạt lở lịch sử</span>
+            <span className="text-[#d4e88a] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
+              ↗
+            </span>
+          </div>
+          <div className="text-[1.9rem] font-extralight text-white leading-none mt-1">
+            {nearEvents.length}
+          </div>
+          <div className="text-[0.72rem] text-[#8b8f98]">
+            gần nhất {lastEventDate}
+          </div>
+        </button>
+
+        <div className="h-[92px] rounded-[16px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] p-3 flex flex-col justify-between text-left">
+          <div className="flex justify-between text-[0.85rem] text-[#d6d8dc] w-full">
+            <span>Sự kiện</span>
+            <span className="text-[#8b8f98]">↗</span>
+          </div>
+          <div className="text-[1.9rem] font-extralight text-white leading-none mt-1">
+            {simData?.total_events || simEvents.length}
+          </div>
+          <div className="text-[0.72rem] text-[#8b8f98]">{`đến ${hh(t)}`}</div>
+        </div>
+      </div>
+
+      {/* 3. Trạm quan sát khu vực (st4) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Trạm quan sát khu vực</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">dữ liệu mô phỏng</small>
+        </div>
+        <div className="grid grid-cols-2 gap-2 p-2.5">
+          <div className="h-[58px] p-2 rounded-[10px] bg-white/[0.025] border border-white/[0.055] flex flex-col justify-center">
+            <b className="text-[1.15rem] font-light text-white leading-none mb-1">
+              {areas.length}
+            </b>
+            <span className="text-[0.68rem] text-[#8b8f98]">Điểm giám sát</span>
+          </div>
+          <div className="h-[58px] p-2 rounded-[10px] bg-white/[0.025] border border-white/[0.055] flex flex-col justify-center">
+            <b className="text-[1.15rem] font-light text-white leading-none mb-1">
+              {avgRain}
+            </b>
+            <span className="text-[0.68rem] text-[#8b8f98]">Mưa TB toàn vùng (mm)</span>
+          </div>
+          <div className="h-[58px] p-2 rounded-[10px] bg-white/[0.025] border border-white/[0.055] flex flex-col justify-center">
+            <b className="text-[1.15rem] font-light text-white leading-none mb-1">
+              {avgSlope}°
+            </b>
+            <span className="text-[0.68rem] text-[#8b8f98]">Độ dốc TB</span>
+          </div>
+          <div className="h-[58px] p-2 rounded-[10px] bg-white/[0.025] border border-white/[0.055] flex flex-col justify-center">
+            <b className="text-[1.15rem] font-light text-white leading-none mb-1">
+              {alertRows.length}
+            </b>
+            <span className="text-[0.68rem] text-[#8b8f98]">Khu vực có cảnh báo mưa</span>
           </div>
         </div>
       </div>
 
-      {/* 2. Nhật ký sự kiện */}
-      <div className="rounded-xl bg-slate-900/70 border border-white/[0.09] p-3 backdrop-blur-md shadow-xl flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200">Nhật ký sự kiện</span>
-          <span className="text-[10px] text-slate-500">mới nhất</span>
+      {/* 4. Cảnh báo vận hành (g_alert) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Cảnh báo vận hành</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">{alertRows.length} khu vực</small>
         </div>
+        <div className="flex flex-col">
+          {alertRows.length > 0 ? (
+            alertRows.map((a) => (
+              <div
+                key={a.name}
+                className="grid grid-cols-[42px_3px_1fr] gap-2.5 px-4 py-1.5 text-[0.8rem] border-b border-white/[0.05] last:border-b-0 items-center"
+              >
+                <span className="text-[#8b8f98] text-[0.74rem] font-mono">{hh(t)}</span>
+                <i className="w-[3px] h-[22px] rounded-[2px] bg-[#38bdf8]" />
+                <div className="leading-tight">
+                  <b className="font-medium text-white">{a.name}</b> Cảnh báo mưa
+                  <div className="text-[#8b8f98] text-[0.72rem] mt-0.5">
+                    {Math.round(a.rain || 0)} mm · ngưỡng {rainAlert} mm
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="grid grid-cols-[42px_3px_1fr] gap-2.5 px-4 py-2 text-[0.8rem] items-center">
+              <span className="text-[#8b8f98] text-[0.74rem]"></span>
+              <i className="w-[3px] h-[22px] rounded-[2px] bg-[#4ade80]" />
+              <div className="leading-tight">
+                <b className="font-medium text-white">Toàn khu vực bình thường</b>
+                <div className="text-[#8b8f98] text-[0.72rem] mt-0.5">
+                  Không khu vực nào vượt ngưỡng mưa chú ý
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-        <div className="flex flex-col gap-2 max-h-[140px] overflow-y-auto no-scrollbar pr-1">
-          {simEvents.slice(0, 5).map((ev, i) => (
-            <div key={i} className="flex items-start gap-2 text-[11px] leading-tight">
-              <span className="font-mono text-slate-400 shrink-0 text-[10px] pt-0.5">{ev.time}</span>
-              <span className="w-0.5 h-6 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
-              <div className="flex flex-col">
-                <span className="text-slate-200 font-medium">{ev.text}</span>
-                <span className="text-[10px] text-slate-400">{ev.sub}</span>
+      {/* 5. Nhật ký sự kiện (g_log) */}
+      <div className="rounded-[22px] bg-[rgba(34,36,40,0.58)] backdrop-blur-[18px] border border-white/[0.08] overflow-hidden shadow-2xl shrink-0">
+        <div className="flex justify-between items-center px-4 py-2.5 border-b border-white/[0.07] text-[0.95rem]">
+          <span className="font-normal text-[#e8e9ec]">Nhật ký sự kiện</span>
+          <small className="text-[#8b8f98] text-[0.76rem]">mới nhất</small>
+        </div>
+        <div className="flex flex-col">
+          {simEvents.map((ev, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-[42px_3px_1fr] gap-2.5 px-4 py-1.5 text-[0.8rem] border-b border-white/[0.05] last:border-b-0 items-center"
+            >
+              <span className="text-[#8b8f98] text-[0.74rem] font-mono">{ev.time}</span>
+              <i
+                className="w-[3px] h-[22px] rounded-[2px]"
+                style={{ backgroundColor: ev.color }}
+              />
+              <div className="leading-tight">
+                <b className="font-medium text-white">{ev.text}</b>
+                <div className="text-[#8b8f98] text-[0.72rem] mt-0.5">{ev.sub}</div>
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* 3. Mô hình dự đoán */}
-      <div className="rounded-xl bg-slate-900/70 border border-white/10 p-3.5 backdrop-blur-md shadow-xl flex flex-col gap-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200">Mô hình dự đoán</span>
-          <span className="text-[10px] text-slate-400">Tập kiểm tra 1.000 dòng</span>
-        </div>
-
-        {/* 4 Score Badges */}
-        <div className="grid grid-cols-4 gap-1 text-center py-1">
-          <div>
-            <div className="text-xs font-bold font-mono text-white">73,3%</div>
-            <div className="text-[8px] text-slate-400 leading-tight mt-0.5">Chính xác chung</div>
-          </div>
-          <div>
-            <div className="text-xs font-bold font-mono text-white">0,75</div>
-            <div className="text-[8px] text-slate-400 leading-tight mt-0.5">Chính xác dương</div>
-          </div>
-          <div>
-            <div className="text-xs font-bold font-mono text-white">0,70</div>
-            <div className="text-[8px] text-slate-400 leading-tight mt-0.5">Độ nhạy</div>
-          </div>
-          <div>
-            <div className="text-xs font-bold font-mono text-white">0,73</div>
-            <div className="text-[8px] text-slate-400 leading-tight mt-0.5">F1</div>
-          </div>
-        </div>
-
-        {/* 3 Benchmark Horizontal Bars */}
-        <div className="flex flex-col gap-1.5 text-[10px]">
-          <div>
-            <div className="flex justify-between mb-0.5">
-              <span className="text-slate-400">Hồi quy logistic</span>
-              <span className="font-mono text-slate-200 font-semibold">{lrAuc.toFixed(3)}</span>
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-              <div
-                className="h-full bg-brand-yellow rounded-full"
-                style={{ width: `${lrAuc * 100}%` }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between mb-0.5">
-              <span className="text-slate-400">Rừng ngẫu nhiên</span>
-              <span className="font-mono text-slate-200 font-semibold">{rfAuc.toFixed(3)}</span>
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-              <div
-                className="h-full bg-brand-yellow/85 rounded-full"
-                style={{ width: `${rfAuc * 100}%` }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between mb-0.5">
-              <span className="text-slate-400">XGBoost</span>
-              <span className="font-mono text-slate-200 font-semibold">{xgbAuc.toFixed(3)}</span>
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-              <div
-                className="h-full bg-brand-yellow/85 rounded-full"
-                style={{ width: `${xgbAuc * 100}%` }}
-              />
-            </div>
-          </div>
         </div>
       </div>
     </aside>

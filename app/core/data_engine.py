@@ -160,7 +160,10 @@ def level_of(score: float, thr: tuple[float, float]) -> str:
 def compute(base: dict, scale: float, thr: tuple[float, float], model=None):
     """Chạy mô hình đã huấn luyện trên lưới. Đầu vào mưa là rain * scale. Không thêm nhiễu ngẫu nhiên."""
     if model is None:
-        from core.model_loader import load_best_model
+        try:
+            from .model_loader import load_best_model
+        except ImportError:
+            from core.model_loader import load_best_model
         model, _, _ = load_best_model()
     risk = predict_grid(model, base, scale)
     cells = risk.reshape(NC, BLOCK, NC, BLOCK).mean(axis=(1, 3)).ravel()
