@@ -1,4 +1,4 @@
-"""Bản đồ 2D (phân vùng nguy cơ) và địa hình 3D cho trung tâm giám sát."""
+"""Bản đồ 2D (phân vùng nguy cơ) và địa hình 3D tràn toàn màn hình cho trung tâm giám sát."""
 from __future__ import annotations
 
 import base64
@@ -20,9 +20,6 @@ _ChoroplethMap = getattr(go, "Choroplethmap", getattr(go, "Choroplethmapbox", No
 _MAP_LAYOUT_KEY = "map" if _HAS_MAP_V7 else "mapbox"
 
 
-# ----------------------------------------------------------------------------
-# Hàm phụ
-# ----------------------------------------------------------------------------
 def _smooth(a: np.ndarray, passes: int = 2) -> np.ndarray:
     for _ in range(passes):
         p = np.pad(a, 1, mode="edge")
@@ -86,15 +83,15 @@ def _map_scale(thr):
 
 
 def _ramp_stops(thr):
-    """Thang màu địa hình trầm tự nhiên: xám đá -> lục rêu trầm -> vàng đất -> cam trầm -> đỏ sẫm."""
+    """Thang màu địa hình trầm tự nhiên: đen khói ở chân địa hình -> lục rêu trầm -> vàng đất -> cam trầm -> đỏ sẫm."""
     lo, hi = thr
     return [
-        (0.0, "#192826"),
-        (lo * 0.55, "#2b4c43"),
-        (lo, "#6f8f52"),
-        ((lo + hi) / 2, "#c68b39"),
-        (hi, "#c9533b"),
-        (1.0, "#a82926"),
+        (0.0, "#121c1b"),
+        (lo * 0.55, "#26443c"),
+        (lo, "#68874d"),
+        ((lo + hi) / 2, "#c28738"),
+        (hi, "#c65039"),
+        (1.0, "#a62624"),
     ]
 
 
@@ -151,7 +148,7 @@ def _resolve_event_locations(ev, df):
 
 
 # ----------------------------------------------------------------------------
-# Bản đồ 2D
+# Bản đồ 2D (Tràn toàn màn hình)
 # ----------------------------------------------------------------------------
 def render_2d_workspace(
     base,
@@ -162,10 +159,10 @@ def render_2d_workspace(
     show_risk_grid=True,
     show_hist=True,
     show_areas=True,
-    height=720,
+    height=1080,
     selected_area: str | None = None,
     risk_field=None,
-    zoom: float = 9.2,
+    zoom: float = 9.3,
 ):
     lat, lon = np.asarray(base["lat"], float), np.asarray(base["lon"], float)
     west, east, south, north = lon.min(), lon.max(), lat.min(), lat.max()
@@ -334,13 +331,15 @@ def render_2d_workspace(
             )
         )
 
-    fig.update_layout(**base_layout(height), showlegend=False, clickmode="event+select")
+    lay = base_layout(height)
+    lay["margin"] = dict(l=0, r=0, t=0, b=0)
+    fig.update_layout(**lay, showlegend=False, clickmode="event+select")
     map_cfg = dict(
         style=style,
         zoom=zoom,
         layers=layers,
         center=dict(
-            lat=float((south + north) / 2 - 0.035 * 2 ** (9.5 - zoom)),
+            lat=float((south + north) / 2 - 0.012),
             lon=float((west + east) / 2),
         ),
     )
@@ -349,7 +348,7 @@ def render_2d_workspace(
 
 
 # ----------------------------------------------------------------------------
-# Địa hình 3D
+# Địa hình 3D (Tràn rộng toàn màn hình, làm mềm chân biên địa hình hòa vào nền tối)
 # ----------------------------------------------------------------------------
 def render_3d_terrain(
     base,
@@ -358,12 +357,21 @@ def render_3d_terrain(
     thr,
     show_hist=True,
     show_areas=True,
-    height=720,
+    height=1080,
     selected_area: str | None = None,
 ):
     lat, lon = np.asarray(base["lat"], float), np.asarray(base["lon"], float)
-    elev = _smooth(np.asarray(base["elev"], float), 4)
-    risk_s = _smooth(np.asarray(risk, float), 3) if np.shape(risk) == elev.shape else risk
+    elev_raw = _smooth(np.asarray(base["elev"], float), 4)
+    risk_raw = _smooth(np.asarray(risk, float), 3) if np.shape(risk) == elev_raw.shape else np.asarray(risk, float)
+
+    # Làm mềm nhẹ vành đai ngoài cùng của lưới DEM để chân địa hình hòa tự nhiên vào nền tối, không tạo cảm giác khối hộp cứng
+    ny, nx = elev_raw.shape
+    wy = np.sin(np.linspace(0, np.pi, ny)) ** 0.28
+    wx = np.sin(np.linspace(0, np.pi, nx)) ** 0.28
+    feather = np.outer(wy, wx)
+    base_floor = float(elev_raw.min()) * 0.65
+    elev = base_floor + (elev_raw - base_floor) * (0.35 + 0.65 * feather)
+    risk_s = risk_raw * (0.25 + 0.75 * feather)
 
     fig = go.Figure(
         go.Surface(
@@ -375,14 +383,14 @@ def render_3d_terrain(
             cmax=1,
             colorscale=_terrain_scale(thr),
             showscale=False,
-            lighting=dict(ambient=0.62, diffuse=0.82, roughness=0.75, specular=0.06, fresnel=0.12),
+            lighting=dict(ambient=0.65, diffuse=0.84, roughness=0.72, specular=0.06, fresnel=0.12),
             contours=dict(
                 z=dict(
                     show=True,
-                    start=0,
+                    start=float(base_floor + 80),
                     end=float(np.ceil(elev.max() / 100) * 100),
-                    size=260,
-                    color="rgba(255,255,255,0.09)",
+                    size=240,
+                    color="rgba(255,255,255,0.08)",
                     width=1,
                 )
             ),
@@ -401,7 +409,7 @@ def render_3d_terrain(
             go.Scatter3d(
                 x=ev["lon"],
                 y=ev["lat"],
-                z=_sample(base, elev, ev["lat"], ev["lon"]) + 25,
+                z=_sample(base, elev, ev["lat"], ev["lon"]) + 24,
                 mode="markers",
                 name="hist-events-3d",
                 marker=dict(size=4.5, color="rgba(235,238,245,0.85)", opacity=0.92),
@@ -424,7 +432,7 @@ def render_3d_terrain(
         )
 
     if show_areas:
-        zs = _sample(base, elev, df["lat"], df["lon"]) + 42
+        zs = _sample(base, elev, df["lat"], df["lon"]) + 40
         fig.add_trace(
             go.Scatter3d(
                 x=df["lon"],
@@ -468,10 +476,10 @@ def render_3d_terrain(
             if r.level == "Cao":
                 hx += [r.lon, r.lon, None]
                 hy += [r.lat, r.lat, None]
-                hz += [z0, z0 + 500, None]
+                hz += [z0, z0 + 480, None]
                 head_x.append(r.lon)
                 head_y.append(r.lat)
-                head_z.append(z0 + 500)
+                head_z.append(z0 + 480)
                 head_names.append([r.name])
         if hx:
             fig.add_trace(
@@ -498,12 +506,12 @@ def render_3d_terrain(
 
         if selected_area and selected_area in df["name"].values:
             sel = df[df["name"] == selected_area].iloc[0]
-            sel_z = float(_sample(base, elev, [sel["lat"]], [sel["lon"]])[0]) + 42
+            sel_z = float(_sample(base, elev, [sel["lat"]], [sel["lon"]])[0]) + 40
             fig.add_trace(
                 go.Scatter3d(
                     x=[sel["lon"], sel["lon"]],
                     y=[sel["lat"], sel["lat"]],
-                    z=[sel_z, sel_z + 620],
+                    z=[sel_z, sel_z + 600],
                     mode="lines+markers",
                     customdata=[[sel["name"]], [sel["name"]]],
                     line=dict(color="#c8dc70", width=6),
@@ -520,12 +528,13 @@ def render_3d_terrain(
         clickmode="event+select",
         dragmode="orbit",
         scene=dict(
+            domain=dict(x=[0.0, 1.0], y=[0.0, 1.0]),
             xaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
             zaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
             aspectmode="manual",
-            aspectratio=dict(x=1.35, y=1.35, z=0.38),
-            camera=dict(eye=dict(x=1.15, y=-1.38, z=0.82), center=dict(x=0, y=0, z=-0.12)),
+            aspectratio=dict(x=1.65, y=1.65, z=0.42),
+            camera=dict(eye=dict(x=0.96, y=-1.14, z=0.72), center=dict(x=0, y=-0.02, z=-0.06)),
             bgcolor="rgba(0,0,0,0)",
         ),
     )

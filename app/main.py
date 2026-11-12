@@ -1,6 +1,6 @@
 """Trung tâm giám sát nguy cơ sạt lở đất.
 Giao diện: Dark Frosted Glass HUD đồng bộ theo thiết kế tham chiếu.
-Mô hình 3D toàn màn hình ở giữa, thẻ kính mờ hai bên, thanh thời gian dạng viên ở đáy."""
+Mô hình 3D tràn toàn màn hình, thẻ kính mờ hai bên tách biệt rõ ràng, thanh thời gian ở đáy."""
 from __future__ import annotations
 
 import os
@@ -16,7 +16,7 @@ for p in [str(ROOT / "app"), str(ROOT)]:
 import numpy as np
 import streamlit as st
 
-from core.data_engine import build_base, compute, NC, assign_commune_info
+from core.data_engine import build_base, compute, NC
 from core.model_loader import load_model
 from components.theme import HOURS, vn, hh
 from components.map_view import render_2d_workspace, render_3d_terrain, BASEMAPS
@@ -54,7 +54,7 @@ MODEL_OPTIONS = {
 
 CSS = r'''
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@200;300;400;500;600&display=swap');
-html,body,.stApp,[data-testid="stMain"],[data-testid="stAppViewContainer"]{overflow:hidden!important}
+html,body,.stApp,[data-testid="stMain"],[data-testid="stAppViewContainer"]{overflow:hidden!important;background:#08090c!important}
 .stApp{background:#08090c;color:#eceef2;line-height:1.3}
 .stApp [data-testid="stMarkdownContainer"],.stApp [data-testid="stMarkdownContainer"] div{line-height:1.3}
 .stApp [data-testid="stMarkdownContainer"] p{margin:0}
@@ -64,202 +64,239 @@ html,body,.stApp,[data-testid="stMain"],[data-testid="stAppViewContainer"]{overf
 [data-testid="stElementContainer"]{margin:0!important}
 iframe[height="0"]{display:none}
 
-/* Sân khấu 3D / Bản đồ nền */
-.st-key-stage{position:fixed!important;inset:0;z-index:0;pointer-events:auto;padding:0!important;gap:0!important;overflow:hidden}
-.st-key-stage [data-testid="stPlotlyChart"],.st-key-stage .js-plotly-plot,.st-key-stage .plot-container,.st-key-stage .mapboxgl-map,.st-key-stage .mapboxgl-canvas-container,.st-key-stage canvas{width:100%!important;height:calc(100vh + 6px)!important}
+/* Sân khấu 3D / Bản đồ tràn 100% toàn màn hình (không bao giờ bị đóng khung hay nền trắng) */
+.st-key-stage{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:0!important;pointer-events:auto!important;padding:0!important;margin:0!important;overflow:hidden!important;background:#08090c!important}
+.st-key-stage [data-testid="stElementContainer"],
+.st-key-stage [data-testid="stPlotlyChart"],
+.st-key-stage [data-testid="stPlotlyChart"]>div,
+.st-key-stage .stPlotlyChart,
+.st-key-stage .js-plotly-plot,
+.st-key-stage .plot-container,
+.st-key-stage .svg-container,
+.st-key-stage .gl-container,
+.st-key-stage .mapboxgl-map,
+.st-key-stage .mapboxgl-canvas-container,
+.st-key-stage canvas{
+    width:100vw!important;
+    height:100vh!important;
+    min-height:100vh!important;
+    max-height:100vh!important;
+    background:transparent!important;
+}
 
-/* Hai cột nổi hai bên với khoảng thở rộng rãi */
-.st-key-colL,.st-key-colR{position:fixed!important;top:60px;height:calc(100vh - 76px);display:flex;flex-direction:column;gap:12px!important;z-index:5;pointer-events:none;overflow-y:auto!important;overflow-x:hidden!important;padding-bottom:18px;scrollbar-width:none}
-.st-key-colL{left:20px;width:376px}
-.st-key-colR{right:20px;width:416px}
+/* Hai cột nổi hai bên: ép khoảng cách dọc rõ ràng giữa mọi phần tử con để KHÔNG BAO GIỜ chạm/đè nhau */
+.st-key-colL,.st-key-colR{
+    position:fixed!important;
+    top:62px!important;
+    height:calc(100vh - 76px)!important;
+    display:flex!important;
+    flex-direction:column!important;
+    gap:14px!important;
+    row-gap:14px!important;
+    z-index:5!important;
+    pointer-events:none!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    padding-bottom:24px!important;
+    scrollbar-width:none!important;
+}
+.st-key-colL{left:20px!important;width:380px!important}
+.st-key-colR{right:20px!important;width:416px!important}
 .st-key-colL::-webkit-scrollbar,.st-key-colR::-webkit-scrollbar{display:none}
-.st-key-colL>*,.st-key-colR>*{flex:none}
+.st-key-colL [data-testid="stVerticalBlock"],.st-key-colR [data-testid="stVerticalBlock"]{gap:14px!important;row-gap:14px!important}
+.st-key-colL [data-testid="stElementContainer"],.st-key-colR [data-testid="stElementContainer"]{flex:0 0 auto!important;height:auto!important;margin-bottom:14px!important}
+.st-key-colL [data-testid="stElementContainer"]:last-child,.st-key-colR [data-testid="stElementContainer"]:last-child{margin-bottom:0!important}
 
-/* Chất liệu kính mờ Dark Frosted Glass chuẩn ảnh mẫu */
+/* Chất liệu kính mờ Dark Frosted Glass nền tối sâu (không bị bệt xám khi nền sáng) */
 .g,.mc,.mini,.prof-card{
     pointer-events:auto;
-    background:linear-gradient(155deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.015) 100%), rgba(20, 22, 27, 0.62)!important;
-    backdrop-filter:blur(26px) saturate(140%)!important;
-    -webkit-backdrop-filter:blur(26px) saturate(140%)!important;
-    border:1px solid rgba(255,255,255,0.08)!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,0.09), 0 14px 34px rgba(0,0,0,0.42)!important;
-    border-radius:22px!important;
+    background:linear-gradient(155deg, rgba(36, 39, 46, 0.86) 0%, rgba(16, 18, 23, 0.90) 100%)!important;
+    backdrop-filter:blur(28px) saturate(140%)!important;
+    -webkit-backdrop-filter:blur(28px) saturate(140%)!important;
+    border:1px solid rgba(255,255,255,0.09)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 14px 32px rgba(0,0,0,0.52)!important;
+    border-radius:20px!important;
     overflow:hidden;
 }
 
-/* Hộp chọn khu vực dạng viên thuốc (Record: Family History pill trong ảnh mẫu) */
-.st-key-g_sel{pointer-events:auto;background:none!important;border:0!important;padding:0!important;margin:0!important}
+/* Hộp chọn khu vực dạng viên thuốc (Record: Family History pill trong ảnh mẫu a04eae92) */
+.st-key-g_sel{pointer-events:auto;background:none!important;border:0!important;padding:0!important;margin:0 0 14px 0!important}
 .st-key-g_sel [data-testid="stSelectbox"]{padding:0!important}
 .st-key-g_sel [data-baseweb="select"]>div{
-    background:linear-gradient(155deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%), rgba(22, 24, 29, 0.72)!important;
+    background:linear-gradient(155deg, rgba(34, 37, 44, 0.90) 0%, rgba(18, 20, 25, 0.94) 100%)!important;
     backdrop-filter:blur(24px)!important;
-    border:1px solid rgba(255,255,255,0.09)!important;
+    border:1px solid rgba(255,255,255,0.11)!important;
     border-radius:16px!important;
     min-height:42px!important;
     padding:0 14px!important;
     font-size:0.84rem!important;
     color:#eceef2!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 20px rgba(0,0,0,0.3)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 20px rgba(0,0,0,0.4)!important;
 }
 
 /* Thẻ Hồ sơ khu vực lấy cảm hứng trực tiếp từ Patient Profile (a04eae92) */
-.prof-card{padding:18px 20px 16px 20px;position:relative}
+.prof-card{padding:18px 20px 16px 20px;position:relative;margin-bottom:0!important}
 .prof-card.critical{
-    background:radial-gradient(120% 95% at 50% 105%, rgba(210, 52, 48, 0.34) 0%, rgba(110, 28, 28, 0.16) 52%, rgba(24, 24, 29, 0.72) 100%)!important;
-    border-color:rgba(232, 93, 86, 0.22)!important;
+    background:radial-gradient(125% 100% at 50% 105%, rgba(148, 34, 32, 0.72) 0%, rgba(68, 22, 24, 0.85) 55%, rgba(22, 18, 20, 0.94) 100%)!important;
+    border-color:rgba(232, 93, 86, 0.28)!important;
 }
 .prof-card.watch{
-    background:radial-gradient(120% 95% at 50% 105%, rgba(229, 169, 60, 0.24) 0%, rgba(24, 25, 30, 0.72) 100%)!important;
-    border-color:rgba(229, 169, 60, 0.18)!important;
+    background:radial-gradient(125% 100% at 50% 105%, rgba(135, 92, 24, 0.62) 0%, rgba(45, 34, 20, 0.85) 55%, rgba(20, 20, 24, 0.94) 100%)!important;
+    border-color:rgba(229, 169, 60, 0.24)!important;
 }
 .prof-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.prof-top span{font-size:0.95rem;font-weight:400;color:#eceef2;letter-spacing:-0.01em}
-.prof-top small{font-size:0.74rem;color:rgba(236,238,242,0.52);font-weight:300}
-.prof-grid3{display:grid;grid-template-columns:1.1fr 0.9fr 1.1fr;gap:10px;margin-bottom:18px}
-.prof-grid3 .lbl{font-size:0.74rem;color:rgba(236,238,242,0.48);margin-bottom:3px;font-weight:300}
-.prof-grid3 .val{font-size:0.86rem;color:#eceef2;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.prof-trend-hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;font-size:0.8rem}
-.prof-trend-hdr span:first-child{color:rgba(236,238,242,0.78);font-weight:300}
-.prof-trend-hdr span:last-child{color:#eceef2;font-weight:400;font-variant-numeric:tabular-nums}
-.morse-bar{display:flex;align-items:center;gap:4px;height:10px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.07)}
-.morse-bar i{display:inline-block;height:2.5px;border-radius:2px;background:rgba(255,255,255,0.22)}
-.morse-bar i.on{background:#eceef2;height:3px}
-.morse-bar i.hi{background:#e85d56;height:3px}
+.prof-top span{font-size:0.94rem;font-weight:400;color:#f3f4f6;letter-spacing:-0.01em}
+.prof-top small{font-size:0.74rem;color:rgba(236,238,242,0.58);font-weight:300}
+.prof-grid3{display:grid;grid-template-columns:1.1fr 0.9fr 1.1fr;gap:10px;margin-bottom:16px}
+.prof-grid3 .lbl{font-size:0.73rem;color:rgba(236,238,242,0.55);margin-bottom:3px;font-weight:300}
+.prof-grid3 .val{font-size:0.85rem;color:#f3f4f6;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prof-trend-hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;font-size:0.79rem}
+.prof-trend-hdr span:first-child{color:rgba(236,238,242,0.82);font-weight:300}
+.prof-trend-hdr span:last-child{color:#f3f4f6;font-weight:400;font-variant-numeric:tabular-nums}
+.morse-bar{display:flex;align-items:center;gap:4px;height:10px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.09)}
+.morse-bar i{display:inline-block;height:2.5px;border-radius:2px;background:rgba(255,255,255,0.25)}
+.morse-bar i.on{background:#f3f4f6;height:3px}
+.morse-bar i.hi{background:#ff6b63;height:3px}
 .prof-bot{display:flex;justify-content:space-between;align-items:center;padding-top:2px}
-.prof-bot-left .t1{font-size:0.82rem;color:#eceef2;font-weight:400}
-.prof-bot-left .t2{font-size:0.68rem;color:rgba(236,238,242,0.48);margin-top:2px}
-.prof-bot-mid{display:flex;align-items:center;gap:8px;font-size:0.84rem;color:#eceef2}
+.prof-bot-left .t1{font-size:0.82rem;color:#f3f4f6;font-weight:400}
+.prof-bot-left .t2{font-size:0.68rem;color:rgba(236,238,242,0.55);margin-top:2px}
+.prof-bot-mid{display:flex;align-items:center;gap:8px;font-size:0.84rem;color:#f3f4f6}
 .prof-dot{width:8px;height:8px;border-radius:50%;display:inline-block;position:relative}
-.prof-dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:inherit;opacity:0.28}
+.prof-dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:inherit;opacity:0.32}
 .prof-bot-right{display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:0.74rem;font-variant-numeric:tabular-nums}
-.prof-lvl-row{display:flex;align-items:center;gap:6px;color:rgba(236,238,242,0.78)}
-.prof-lvl-row b{font-weight:400;color:#eceef2}
+.prof-lvl-row{display:flex;align-items:center;gap:6px;color:rgba(236,238,242,0.82)}
+.prof-lvl-row b{font-weight:400;color:#f3f4f6}
 .prof-lvl-row i{width:5px;height:5px;border-radius:50%;display:inline-block}
-.prof-lvl-row s{display:inline-block;width:36px;height:1.5px;background:rgba(255,255,255,0.18);text-decoration:none}
+.prof-lvl-row s{display:inline-block;width:36px;height:1.5px;background:rgba(255,255,255,0.22);text-decoration:none}
 
 /* Hai thẻ vuông .two (Tomography / Radiography style) */
-.two{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;margin:0!important}
-.mini{padding:14px 16px!important;display:flex;flex-direction:column;justify-content:space-between;min-height:102px!important;border-radius:20px!important}
-.mini .t{display:flex;justify-content:space-between;align-items:center;font-size:0.84rem;color:#eceef2;font-weight:400}
-.mini .t span{color:rgba(236,238,242,0.55);font-size:0.88rem;font-weight:300}
-.mini .d{font-size:0.7rem;color:rgba(236,238,242,0.45);margin-top:2px}
+.two{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;margin:0!important}
+.mini{padding:14px 16px!important;display:flex;flex-direction:column;justify-content:space-between;min-height:100px!important;border-radius:20px!important}
+.mini .t{display:flex;justify-content:space-between;align-items:center;font-size:0.83rem;color:#eceef2;font-weight:400}
+.mini .t span{color:rgba(236,238,242,0.62);font-size:0.88rem;font-weight:300}
+.mini .d{font-size:0.7rem;color:rgba(236,238,242,0.48);margin-top:2px}
 .mini .n{font-size:1.95rem;font-weight:200;color:#ffffff;line-height:1.05;margin-top:10px;font-variant-numeric:tabular-nums}
-.mini .n small{font-size:0.76rem;color:rgba(236,238,242,0.45);font-weight:300;margin-left:4px}
+.mini .n small{font-size:0.75rem;color:rgba(236,238,242,0.48);font-weight:300;margin-left:4px}
 
 /* Khung thông tin tiêu chuẩn bên cột trái */
-.ph{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.88rem;color:#eceef2}
-.ph small{color:rgba(236,238,242,0.45);font-size:0.72rem;font-weight:300}
-.st4{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;padding:12px!important}
-.st4 .st4cell{padding:10px 12px;border:1px solid rgba(255,255,255,0.055)!important;border-radius:14px!important;background:rgba(255,255,255,0.02)!important;font-size:0.7rem;color:rgba(236,238,242,0.52)}
-.st4 .st4cell b{display:block;font-size:1.28rem;font-weight:200;color:#eceef2;margin-bottom:2px;font-variant-numeric:tabular-nums}
-.ev{display:grid;grid-template-columns:42px 2.5px 1fr;gap:10px;padding:8px 16px;font-size:0.78rem;border-bottom:1px solid rgba(255,255,255,0.045);align-items:center}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.86rem;color:#eceef2}
+.ph small{color:rgba(236,238,242,0.48);font-size:0.72rem;font-weight:300}
+.st4{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;padding:12px!important}
+.st4 .st4cell{padding:10px 12px;border:1px solid rgba(255,255,255,0.07)!important;border-radius:14px!important;background:rgba(255,255,255,0.025)!important;font-size:0.7rem;color:rgba(236,238,242,0.55)}
+.st4 .st4cell b{display:block;font-size:1.26rem;font-weight:200;color:#f3f4f6;margin-bottom:2px;font-variant-numeric:tabular-nums}
+.ev{display:grid;grid-template-columns:42px 2.5px 1fr;gap:10px;padding:8px 16px;font-size:0.78rem;border-bottom:1px solid rgba(255,255,255,0.05);align-items:center}
 .ev:last-child{border:0}
 .ev i{height:22px;border-radius:2px;display:block}
 .ev b{font-weight:400;color:#eceef2}
-.tm{color:rgba(236,238,242,0.45);font-size:0.72rem;font-variant-numeric:tabular-nums}
-.sub{color:rgba(236,238,242,0.45);font-size:0.7rem;margin-top:2px}
+.tm{color:rgba(236,238,242,0.48);font-size:0.72rem;font-variant-numeric:tabular-nums}
+.sub{color:rgba(236,238,242,0.48);font-size:0.7rem;margin-top:2px}
 
 /* Cột phải: Thẻ KPI theo đúng mẫu HbA1c / Testosterone / Insulin ({40DBE37A} & {F83CBF57}) */
-.st-key-g_cat{pointer-events:auto;background:none!important;border:0!important;box-shadow:none!important;padding:0!important}
-.st-key-g_cat [role="radiogroup"]{gap:8px!important;padding:2px 0 4px 0}
-.st-key-g_cat label{padding:5px 16px;border-radius:999px;background:rgba(24,26,31,0.65);border:1px solid rgba(255,255,255,0.08);margin:0;transition:all .18s ease}
+.st-key-g_cat{pointer-events:auto;background:none!important;border:0!important;box-shadow:none!important;padding:0!important;margin-bottom:10px!important}
+.st-key-g_cat [role="radiogroup"]{gap:8px!important;padding:0!important}
+.st-key-g_cat label{padding:5px 16px;border-radius:999px;background:rgba(20,22,27,0.88);border:1px solid rgba(255,255,255,0.10);margin:0;transition:all .18s ease}
 .st-key-g_cat label>div:first-child{display:none}
-.st-key-g_cat label p{font-size:0.78rem;color:rgba(236,238,242,0.72)}
-.st-key-g_cat label:has(input:checked){background:rgba(200,220,112,0.16);border-color:rgba(200,220,112,0.45)}
-.st-key-g_cat label:has(input:checked) p{color:#d8ea86;font-weight:500}
+.st-key-g_cat label p{font-size:0.78rem;color:rgba(236,238,242,0.78)}
+.st-key-g_cat label:has(input:checked){background:#c8dc70!important;border-color:#c8dc70!important}
+.st-key-g_cat label:has(input:checked) p{color:#14180a!important;font-weight:600!important}
 
-.mg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;pointer-events:none}
+.mg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;pointer-events:none}
 .mc{padding:14px 15px 12px 15px;border-radius:20px!important;display:flex;flex-direction:column;justify-content:space-between}
-.mt{font-size:0.78rem;display:flex;align-items:center;gap:8px;color:rgba(236,238,242,0.82);white-space:nowrap;font-weight:400}
+.mt{font-size:0.78rem;display:flex;align-items:center;gap:8px;color:rgba(236,238,242,0.85);white-space:nowrap;font-weight:400}
 .mt i{width:2.5px;height:12px;border-radius:2px;flex-shrink:0}
 .mv{margin:8px 0 6px;display:flex;align-items:baseline;justify-content:space-between}
 .mv-left{display:flex;align-items:baseline;gap:2px}
-.n{font-size:2.05rem;font-weight:200;line-height:1;color:#f5f6f8;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
-.n .dec{color:rgba(236,238,242,0.42);font-weight:200}
-.n.t{font-size:1.12rem;font-weight:300;letter-spacing:0}
-.u{font-size:0.76rem;color:rgba(236,238,242,0.42);margin-left:4px;font-weight:300}
-.arr{font-size:0.86rem;color:rgba(236,238,242,0.55);font-weight:300;margin-left:6px}
+.n{font-size:2.0rem;font-weight:200;line-height:1;color:#f5f6f8;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+.n .dec{color:rgba(236,238,242,0.45);font-weight:200}
+.n.t{font-size:1.1rem;font-weight:300;letter-spacing:0}
+.u{font-size:0.75rem;color:rgba(236,238,242,0.45);margin-left:4px;font-weight:300}
+.arr{font-size:0.86rem;color:rgba(236,238,242,0.58);font-weight:300;margin-left:6px}
 .dp-row{display:flex;align-items:center;gap:8px;min-height:22px;margin:2px 0 4px}
-.dp{display:inline-block;border-radius:999px;padding:2px 10px;font-size:0.68rem;font-weight:400;background:rgba(200,220,112,0.10);color:#c8dc70;border:1px solid rgba(200,220,112,0.18)}
-.dp.up{background:rgba(232,93,86,0.12);color:#e85d56;border-color:rgba(232,93,86,0.22)}
-.dp.dn{background:rgba(76,195,138,0.12);color:#4cc38a;border-color:rgba(76,195,138,0.22)}
-.dp-arr{font-size:0.76rem;color:rgba(236,238,242,0.55)}
-.sp{width:100%;height:34px;margin-top:6px;background:linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.01) 100%);border-radius:6px;display:block}
-.mn{font-size:0.68rem;color:rgba(236,238,242,0.44);margin-top:6px;line-height:1.3}
+.dp{display:inline-block;border-radius:999px;padding:2px 10px;font-size:0.68rem;font-weight:400;background:rgba(200,220,112,0.12);color:#c8dc70;border:1px solid rgba(200,220,112,0.22)}
+.dp.up{background:rgba(232,93,86,0.14);color:#ff7b74;border-color:rgba(232,93,86,0.26)}
+.dp.dn{background:rgba(76,195,138,0.14);color:#4cc38a;border-color:rgba(76,195,138,0.26)}
+.dp-arr{font-size:0.76rem;color:rgba(236,238,242,0.58)}
+.sp{width:100%;height:34px;margin-top:6px;background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.03);border-radius:6px;display:block}
+.mn{font-size:0.68rem;color:rgba(236,238,242,0.48);margin-top:6px;line-height:1.3}
 
-.bar{height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden}.bar b{display:block;height:100%;border-radius:3px}
-.rk{width:100%;border-collapse:collapse;font-size:0.78rem}.rk td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.045)}.rk tr:last-child td{border-bottom:0}.rk td:first-child{padding-left:16px;color:#eceef2}.rk .num{text-align:right;font-weight:400;font-variant-numeric:tabular-nums}.rk .dl{text-align:right;font-size:0.7rem;color:rgba(236,238,242,0.45);padding-right:16px;font-variant-numeric:tabular-nums}.rk .dl.up{color:#e85d56}
-.stk{display:flex;height:8px;margin:12px 16px 8px;border-radius:4px;overflow:hidden;gap:2px}.lg2{display:flex;justify-content:space-between;padding:0 16px 12px;font-size:0.7rem;color:rgba(236,238,242,0.62)}.lg2 i,.lgd i{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px}
+.bar{height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden}.bar b{display:block;height:100%;border-radius:3px}
+.rk{width:100%;border-collapse:collapse;font-size:0.78rem}.rk td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.05)}.rk tr:last-child td{border-bottom:0}.rk td:first-child{padding-left:16px;color:#eceef2}.rk .num{text-align:right;font-weight:400;font-variant-numeric:tabular-nums}.rk .dl{text-align:right;font-size:0.7rem;color:rgba(236,238,242,0.48);padding-right:16px;font-variant-numeric:tabular-nums}.rk .dl.up{color:#ff7b74}
+.stk{display:flex;height:8px;margin:12px 16px 8px;border-radius:4px;overflow:hidden;gap:2px}.lg2{display:flex;justify-content:space-between;padding:0 16px 12px;font-size:0.7rem;color:rgba(236,238,242,0.68)}.lg2 i,.lgd i{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px}
 
-/* Thanh điều hướng góc trên trái & phải (không icon AI, viền kính mảnh) */
-.st-key-g_nav,.st-key-g_ctrl,.st-key-g_3d,.st-key-g_map2d,.st-key-g_mapmode{background:none!important;border:0!important;backdrop-filter:none!important;box-shadow:none!important;overflow:visible}
-.st-key-g_nav{position:fixed!important;top:14px;left:20px;z-index:9999!important;width:auto!important;pointer-events:auto!important}
+/* Thanh điều hướng góc trên trái & phải: độ tương phản cao, gọn gàng trong 380px */
+.st-key-g_nav,.st-key-g_ctrl,.st-key-g_3d,.st-key-g_map2d,.st-key-g_mapmode{background:none!important;border:0!important;backdrop-filter:none!important;box-shadow:none!important;overflow:visible!important}
+.st-key-g_nav{position:fixed!important;top:14px!important;left:20px!important;z-index:9999!important;width:auto!important;pointer-events:auto!important}
 .st-key-g_nav [data-testid="stHorizontalBlock"]{gap:6px!important;width:auto!important;display:flex!important;flex-direction:row!important;align-items:center!important}
 .st-key-g_nav [data-testid="stColumn"]{width:auto!important;min-width:max-content!important;flex:0 0 auto!important}
 .st-key-g_nav button,.st-key-g_ctrl button{
-    background:rgba(22, 24, 29, 0.72)!important;
-    backdrop-filter:blur(20px)!important;
-    border:1px solid rgba(255,255,255,0.10)!important;
+    background:rgba(20, 22, 27, 0.88)!important;
+    backdrop-filter:blur(24px)!important;
+    border:1px solid rgba(255,255,255,0.12)!important;
     border-radius:999px!important;
-    color:rgba(236,238,242,0.82)!important;
-    padding:5px 14px!important;
+    color:#eceef2!important;
+    padding:4px 12px!important;
     height:34px!important;
     min-height:34px!important;
     cursor:pointer!important;
     pointer-events:auto!important;
     white-space:nowrap!important;
     width:auto!important;
-    font-size:0.76rem!important;
+    font-size:0.74rem!important;
     font-weight:400!important;
     transition:all .18s ease!important;
 }
-.st-key-g_nav button:hover,.st-key-g_ctrl button:hover{background:rgba(38, 42, 50, 0.88)!important;border-color:rgba(255,255,255,0.22)!important;color:#ffffff!important}
+.st-key-g_nav button:hover,.st-key-g_ctrl button:hover{background:rgba(38, 42, 50, 0.95)!important;border-color:rgba(255,255,255,0.25)!important;color:#ffffff!important}
 .st-key-g_nav button[data-testid="stBaseButton-primary"],.st-key-g_nav button[kind="primary"]{
-    background:rgba(200, 220, 112, 0.18)!important;
-    color:#d8ea86!important;
-    border:1px solid rgba(200, 220, 112, 0.45)!important;
-    font-weight:500!important;
+    background:#c8dc70!important;
+    color:#14180a!important;
+    border:1px solid #c8dc70!important;
+    font-weight:600!important;
 }
-.st-key-g_ctrl{position:fixed!important;top:14px;right:20px;z-index:9999!important;width:auto!important;pointer-events:auto!important}
+.st-key-g_ctrl{position:fixed!important;top:14px!important;right:20px!important;z-index:9999!important;width:auto!important;pointer-events:auto!important}
 .st-key-g_ctrl [data-testid="stPopover"]{width:auto!important}
 .st-key-g_ctrl [data-testid="stPopoverBody"] button{border-radius:10px!important;width:100%!important}
-[data-testid="stPopoverBody"],div[data-baseweb="popover"]{pointer-events:auto!important;background:rgba(18, 20, 25, 0.94)!important;backdrop-filter:blur(24px)!important;border:1px solid rgba(255,255,255,0.12)!important;border-radius:16px!important;padding:14px 18px!important;box-shadow:0 20px 44px rgba(0,0,0,0.65)!important;z-index:999999!important;min-width:320px!important}
+[data-testid="stPopoverBody"],div[data-baseweb="popover"]{pointer-events:auto!important;background:rgba(18, 20, 25, 0.96)!important;backdrop-filter:blur(24px)!important;border:1px solid rgba(255,255,255,0.14)!important;border-radius:16px!important;padding:14px 18px!important;box-shadow:0 20px 44px rgba(0,0,0,0.65)!important;z-index:999999!important;min-width:320px!important}
 [data-testid="stPopoverBody"] *{pointer-events:auto!important}
 
 /* Viên thuốc trạng thái duy nhất ở chính giữa đỉnh màn hình */
-.status{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:6;display:inline-flex;gap:14px;align-items:center;padding:7px 18px;border-radius:999px!important;font-size:0.78rem;white-space:nowrap}
-.status span{color:rgba(236,238,242,0.52);font-weight:300}
+.status{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:6;display:inline-flex;gap:14px;align-items:center;padding:7px 18px;border-radius:999px!important;font-size:0.76rem;white-space:nowrap}
+.status span{color:rgba(236,238,242,0.58);font-weight:300}
 .status b{font-weight:500;color:#eceef2}
 
-/* Cụm nút 3D / Bản đồ (tách biệt hoàn toàn ở dòng bottom: 118px, không bao giờ đè lên chú giải) */
-.st-key-g_3d{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)) + 90px);bottom:116px;width:54px;height:34px;z-index:20;pointer-events:auto!important}
-.st-key-g_map2d{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)));bottom:116px;width:84px;height:34px;z-index:20;pointer-events:auto!important}
-.st-key-g_mapmode{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)) + 150px);bottom:116px;width:96px;height:34px;z-index:20;pointer-events:auto!important}
+/* Cụm nút 3D / Bản đồ / Nền bản đồ (tách biệt ở dòng bottom: 114px, không xuống dòng, không đè nhau) */
+.st-key-g_3d{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)) + 90px)!important;bottom:114px!important;width:54px!important;height:34px!important;z-index:20!important;pointer-events:auto!important}
+.st-key-g_map2d{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)))!important;bottom:114px!important;width:84px!important;height:34px!important;z-index:20!important;pointer-events:auto!important}
+.st-key-g_mapmode{position:fixed!important;left:auto!important;right:calc(50vw - min(330px, calc(50vw - 440px)) + 150px)!important;bottom:114px!important;width:116px!important;height:34px!important;z-index:20!important;pointer-events:auto!important}
 .st-key-g_3d button,.st-key-g_map2d button,.st-key-g_mapmode button{
-    width:100%!important;height:34px!important;min-height:34px!important;border-radius:999px!important;padding:0 10px!important;font-size:0.74rem!important;
-    background:rgba(22, 24, 29, 0.72)!important;backdrop-filter:blur(20px)!important;border:1px solid rgba(255,255,255,0.10)!important;color:rgba(236,238,242,0.78)!important;
+    width:100%!important;height:34px!important;min-height:34px!important;border-radius:999px!important;padding:0 12px!important;font-size:0.74rem!important;
+    white-space:nowrap!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;
+    background:rgba(20, 22, 27, 0.88)!important;backdrop-filter:blur(24px)!important;border:1px solid rgba(255,255,255,0.12)!important;color:#eceef2!important;
 }
 .st-key-g_3d button[kind="primary"],.st-key-g_map2d button[kind="primary"]{
-    background:rgba(200, 220, 112, 0.18)!important;color:#d8ea86!important;border:1px solid rgba(200, 220, 112, 0.45)!important;font-weight:500!important;
+    background:#c8dc70!important;color:#14180a!important;border:1px solid #c8dc70!important;font-weight:600!important;
 }
+.st-key-g_mapmode [data-testid="stPopoverBody"]{min-width:128px!important;width:128px!important;padding:6px!important}
+.st-key-g_mapmode [data-testid="stPopoverBody"] button{height:32px!important;min-height:32px!important;margin:2px 0!important;border-radius:10px!important}
 
-/* Thanh thời gian dạng viên ở đáy (bottom: 54px) */
+/* Thanh thời gian dạng viên ở đáy (bottom: 50px) — nút Phát lại đủ rộng không bao giờ bị cắt thành "Phát ..." */
 .st-key-g_time{
-    position:fixed!important;left:50%!important;right:auto!important;bottom:52px!important;transform:translateX(-50%)!important;
-    width:min(660px,calc(100vw - 880px))!important;height:54px!important;border-radius:999px!important;padding:6px 18px!important;z-index:30!important;
+    position:fixed!important;left:50%!important;right:auto!important;bottom:50px!important;transform:translateX(-50%)!important;
+    width:min(660px,calc(100vw - 860px))!important;height:54px!important;border-radius:999px!important;padding:6px 18px!important;z-index:30!important;
     display:flex!important;justify-content:center!important;align-items:center!important;margin:0!important;overflow:visible!important;
-    background:linear-gradient(155deg, rgba(255,255,255,0.065) 0%, rgba(255,255,255,0.018) 100%), rgba(18, 20, 25, 0.75)!important;
-    backdrop-filter:blur(28px)!important;border:1px solid rgba(255,255,255,0.10)!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 36px rgba(0,0,0,0.5)!important;
+    background:linear-gradient(155deg, rgba(34, 37, 44, 0.90) 0%, rgba(16, 18, 23, 0.94) 100%)!important;
+    backdrop-filter:blur(28px)!important;border:1px solid rgba(255,255,255,0.11)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 36px rgba(0,0,0,0.55)!important;
 }
-.st-key-g_time [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important;height:42px!important;overflow:visible!important}
+.st-key-g_time [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important;height:42px!important;overflow:visible!important;width:100%!important}
 .st-key-g_time [data-testid="stColumn"]{align-self:center!important;min-width:0!important;overflow:visible!important}
-.st-key-g_time [data-testid="stElementContainer"]{width:100%}
+.st-key-g_time [data-testid="stColumn"]:first-child{min-width:92px!important;flex:0 0 92px!important}
+.st-key-g_time [data-testid="stElementContainer"]{width:100%!important}
 .st-key-g_time button{
-    height:34px!important;min-height:34px!important;width:100%!important;border-radius:999px!important;
-    background:rgba(200, 220, 112, 0.18)!important;color:#d8ea86!important;border:1px solid rgba(200, 220, 112, 0.45)!important;font-size:0.76rem!important;font-weight:500!important;
+    height:34px!important;min-height:34px!important;width:92px!important;min-width:92px!important;padding:0 12px!important;border-radius:999px!important;
+    white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;
+    background:#c8dc70!important;color:#14180a!important;border:1px solid #c8dc70!important;font-size:0.75rem!important;font-weight:600!important;
 }
-.st-key-g_time button:hover{background:rgba(200, 220, 112, 0.28)!important;color:#ffffff!important}
+.st-key-g_time button:hover{background:#d6e882!important;color:#000000!important}
 .st-key-g_time [data-testid="stSlider"]{min-height:18px!important;margin-top:-2px!important;padding:0!important;height:20px!important;overflow:visible!important}
 .st-key-g_time [data-testid="stThumbValue"],.st-key-g_time [data-testid="stSliderThumbValue"],.st-key-g_time [data-testid="stTickBar"]{display:none!important}
 .st-key-g_time [data-testid="stSlider"] > div{overflow:visible!important}
@@ -267,17 +304,17 @@ iframe[height="0"]{display:none}
 .st-key-g_time [data-testid="stSlider"] [data-baseweb="slider"] > div{min-height:18px!important;height:18px!important}
 .st-key-g_time [data-testid="stSlider"] [data-baseweb="slider"] > div > div{height:4px!important;top:7px!important;border-radius:999px!important}
 .st-key-g_time [data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child{background:#c8dc70!important}
-.st-key-g_time [data-testid="stSlider"] [data-baseweb="slider"] > div > div:last-child{background:rgba(255,255,255,0.14)!important}
+.st-key-g_time [data-testid="stSlider"] [data-baseweb="slider"] > div > div:last-child{background:rgba(255,255,255,0.16)!important}
 .st-key-g_time [data-testid="stSlider"] [role="slider"]{width:13px!important;height:13px!important;top:2.5px!important;background:#c8dc70!important;border:2px solid #f4f6e8!important;box-shadow:0 0 10px rgba(200,220,112,0.5)!important;outline:none!important}
 .st-key-g_time label{height:0!important;overflow:hidden!important;position:absolute!important;display:none!important}
 
-/* Thanh chú giải nằm riêng ở sát đáy (bottom: 14px), căn giữa tuyệt đối, không đè lên bất kỳ nút nào */
+/* Thanh chú giải nằm riêng ở sát đáy (bottom: 12px), căn giữa tuyệt đối */
 .lgd{
-    position:fixed;left:50%;transform:translateX(-50%);bottom:14px;padding:5px 16px;font-size:0.7rem;color:rgba(236,238,242,0.68);
+    position:fixed;left:50%;transform:translateX(-50%);bottom:12px;padding:5px 16px;font-size:0.7rem;color:rgba(236,238,242,0.75);
     display:inline-flex;gap:16px;border-radius:999px!important;z-index:6;white-space:nowrap;height:30px;box-sizing:border-box;align-items:center;
 }
-.clk{line-height:1.05}.clk b{font-size:1.05rem;font-weight:400;display:block;color:#eceef2;font-variant-numeric:tabular-nums}.clk span{display:block;color:rgba(236,238,242,0.45);font-size:0.62rem;margin-top:2px;white-space:nowrap}
-.mini2{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;color:rgba(236,238,242,0.45);text-align:right;line-height:1.05}.mini2 b{display:block;font-size:1.25rem;font-weight:300;color:#eceef2;margin-bottom:2px;font-variant-numeric:tabular-nums}.mini2 span{font-size:0.6rem;white-space:nowrap}
+.clk{line-height:1.05;padding-left:2px}.clk b{font-size:1.04rem;font-weight:400;display:block;color:#eceef2;font-variant-numeric:tabular-nums}.clk span{display:block;color:rgba(236,238,242,0.48);font-size:0.62rem;margin-top:2px;white-space:nowrap}
+.mini2{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;color:rgba(236,238,242,0.48);text-align:right;line-height:1.05}.mini2 b{display:block;font-size:1.22rem;font-weight:300;color:#eceef2;margin-bottom:2px;font-variant-numeric:tabular-nums}.mini2 span{font-size:0.6rem;white-space:nowrap}
 '''
 
 
@@ -481,11 +518,11 @@ def monitor():
     glow = {"Cảnh báo": "210, 52, 48", "Theo dõi": "215, 155, 50", "Bình thường": "60, 165, 115"}[status]
     st.markdown(
         f"<style>.stApp{{background:radial-gradient(ellipse 80% 40% at 50% 110%, rgba({glow},0.32), "
-        f"transparent 70%), #08090c}}</style>",
+        f"transparent 70%), #08090c!important}}</style>",
         unsafe_allow_html=True,
     )
 
-    # ---- Sân khấu 3D / Bản đồ 2D
+    # ---- Sân khấu 3D / Bản đồ 2D tràn toàn màn hình (height=1080 để không bao giờ bị cắt khung ở đáy)
     with st.container(key="stage"):
         if ss.view == "3D":
             fig = render_3d_terrain(
@@ -495,7 +532,7 @@ def monitor():
                 thr,
                 show_hist=ss.show_hist,
                 show_areas=ss.show_areas,
-                height=720,
+                height=1080,
                 selected_area=selected_area,
             )
         else:
@@ -508,10 +545,10 @@ def monitor():
                 show_risk_grid=ss.show_grid,
                 show_hist=ss.show_hist,
                 show_areas=ss.show_areas,
-                height=720,
+                height=1080,
                 selected_area=selected_area,
                 risk_field=risk,
-                zoom=9.15,
+                zoom=9.25,
             )
         chart_selection = st.plotly_chart(
             fig,
@@ -779,9 +816,8 @@ def monitor():
             ),
         ]
 
-    # ---- Cột trái (thiết kế theo mẫu a04eae92)
+    # ---- Cột trái (thiết kế theo mẫu a04eae92, mỗi thẻ có khoảng cách 14px tách biệt)
     with st.container(key="colL"):
-        # 1. Viên thuốc chọn khu vực nằm tách biệt phía trên thẻ Hồ sơ (giống Record: Family History ⌄)
         area_options = ["Tổng quan toàn vùng"] + names
         curr_opt = selected_area if selected_area in names else "Tổng quan toàn vùng"
         with st.container(key="g_sel"):
@@ -793,7 +829,6 @@ def monitor():
                 label_visibility="collapsed",
             )
 
-        # 2. Thẻ Hồ sơ khu vực (Patient Profile Glass Card style)
         z_score = float(z["score"])
         z_lvl = lvl(z_score)
         z_col = lcol(z_score)
@@ -817,7 +852,35 @@ def monitor():
             rain_val_str = f"{float(R[t, k]):.0f} mm"
             bot_sub = f"Mã: {z['code']} · Độ ẩm {100 * float(z.get('soil', 0.5)):.0f}%"
 
+        last_ev = f"Gần nhất {near.iloc[0]['date']}" if len(near) else "Chưa ghi nhận"
+
+        alert_rows = [(names[i], float(R[t, i])) for i in np.where(R[t] >= RA)[0]]
+        alert_rows.sort(key=lambda item: item[1], reverse=True)
+        if alert_rows:
+            alert_html = "".join(
+                f'<div class="ev"><span class="tm">{hh(t)}</span><i style="background:{AC}"></i>'
+                f'<div><b>{name}</b> · Cảnh báo mưa<div class="sub">{rain:.0f} mm · ngưỡng {RA:.0f} mm</div></div></div>'
+                for name, rain in alert_rows
+            )
+        else:
+            alert_html = (
+                f'<div class="ev"><span class="tm">{hh(t)}</span><i style="background:{LO}"></i>'
+                '<div><b>Toàn vùng ổn định</b><div class="sub">Chưa có xã vượt ngưỡng mưa chú ý</div></div></div>'
+            )
+
+        log = (
+            "".join(
+                f'<div class="ev"><span class="tm">{hh(h)}</span><i style="background:{c}"></i>'
+                f'<div><b>{names[kk]}</b> {tx}<div class="sub">{sb}</div></div></div>'
+                for h, kk, tx, sb, c in events[:20]
+            )
+            or '<div class="ev"><span class="tm">--:--</span><i style="background:rgba(255,255,255,0.2)"></i>'
+            '<div class="sub">Chưa phát sinh sự kiện chuyển mức.</div></div>'
+        )
+
+        # Render toàn bộ các thẻ bên cột trái trong một luồng flex dọc chuẩn với gap=14px để đảm bảo 100% không bao giờ chạm hay đè nhau
         st.markdown(
+            f'<div style="display:flex;flex-direction:column;gap:14px">'
             f'<div class="prof-card {card_tone}">'
             f'<div class="prof-top"><span>{prof_title}</span><small>Giờ {hh(t)}</small></div>'
             f'<div class="prof-grid3">'
@@ -832,71 +895,29 @@ def monitor():
             f'<div class="prof-bot-mid"><span class="prof-dot" style="background:{z_col}"></span><span>{z_lvl}</span></div>'
             f'<div class="prof-bot-right">'
             f'<div class="prof-lvl-row"><b>{vn(z_score)}</b><i style="background:{z_col}"></i><s style="background:{z_col}88"></s></div>'
-            f'<div class="prof-lvl-row"><span style="font-size:0.65rem;color:rgba(236,238,242,0.4)">Ngưỡng</span><i style="background:{LO}"></i></div>'
+            f'<div class="prof-lvl-row"><span style="font-size:0.65rem;color:rgba(236,238,242,0.45)">Ngưỡng</span><i style="background:{LO}"></i></div>'
             f'<div class="prof-lvl-row"><b>{vn(thr[0])}</b><i style="background:{MI}"></i></div>'
-            f"</div></div></div>",
-            unsafe_allow_html=True,
-        )
-
-        # 3. Hai thẻ vuông .two (Tomography / Radiography style)
-        last_ev = f"Gần nhất {near.iloc[0]['date']}" if len(near) else "Chưa ghi nhận"
-        st.markdown(
-            '<div class="two">'
+            f"</div></div></div>"
+            f'<div class="two">'
             f'<div class="mini"><div><div class="t">Hồ sơ lịch sử<span>↗</span></div><div class="d">{last_ev}</div></div>'
             f'<div class="n">{len(near)}<small>vụ</small></div></div>'
             f'<div class="mini"><div><div class="t">Diễn biến kịch bản<span>↗</span></div><div class="d">Tính đến {hh(t)}</div></div>'
             f'<div class="n">{len(events)}<small>mốc</small></div></div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # 4. Trạm quan sát khu vực
-        st.markdown(
-            '<div class="g"><div class="ph"><span>Trạm quan sát khu vực</span><small>12 xã trọng điểm</small></div>'
-            '<div class="st4">'
+            f"</div>"
+            f'<div class="g"><div class="ph"><span>Trạm quan sát khu vực</span><small>12 xã trọng điểm</small></div>'
+            f'<div class="st4">'
             f'<div class="st4cell"><b>{len(df)}</b>Điểm giám sát</div>'
             f'<div class="st4cell"><b>{R[t].mean():.0f} mm</b>Mưa TB toàn vùng</div>'
             f'<div class="st4cell"><b>{vn(float(df["slope"].mean()), 1)}°</b>Độ dốc TB</div>'
             f'<div class="st4cell"><b>{int((R[t] >= RA).sum())}</b>Xã vượt ngưỡng mưa</div>'
-            "</div></div>",
+            f"</div></div>"
+            f'<div class="g"><div class="ph"><span>Cảnh báo vận hành</span><small>{len(alert_rows)} khu vực</small></div>{alert_html}</div>'
+            f'<div class="g"><div class="ph"><span>Nhật ký diễn biến</span><small>{len(events)} mốc</small></div>{log}</div>'
+            f"</div>",
             unsafe_allow_html=True,
         )
 
-        # 5. Cảnh báo vận hành (trực tiếp 1 thẻ .g, không bọc st.container gây viền đôi)
-        alert_rows = [(names[i], float(R[t, i])) for i in np.where(R[t] >= RA)[0]]
-        alert_rows.sort(key=lambda item: item[1], reverse=True)
-        if alert_rows:
-            alert_html = "".join(
-                f'<div class="ev"><span class="tm">{hh(t)}</span><i style="background:{AC}"></i>'
-                f'<div><b>{name}</b> · Cảnh báo mưa<div class="sub">{rain:.0f} mm · ngưỡng {RA:.0f} mm</div></div></div>'
-                for name, rain in alert_rows
-            )
-        else:
-            alert_html = (
-                f'<div class="ev"><span class="tm">{hh(t)}</span><i style="background:{LO}"></i>'
-                '<div><b>Toàn vùng ổn định</b><div class="sub">Chưa có xã vượt ngưỡng mưa chú ý</div></div></div>'
-            )
-        st.markdown(
-            f'<div class="g"><div class="ph"><span>Cảnh báo vận hành</span><small>{len(alert_rows)} khu vực</small></div>{alert_html}</div>',
-            unsafe_allow_html=True,
-        )
-
-        # 6. Nhật ký sự kiện (trực tiếp 1 thẻ .g, không viền đôi)
-        log = (
-            "".join(
-                f'<div class="ev"><span class="tm">{hh(h)}</span><i style="background:{c}"></i>'
-                f'<div><b>{names[kk]}</b> {tx}<div class="sub">{sb}</div></div></div>'
-                for h, kk, tx, sb, c in events[:20]
-            )
-            or '<div class="ev"><span class="tm">--:--</span><i style="background:rgba(255,255,255,0.2)"></i>'
-            '<div class="sub">Chưa phát sinh sự kiện chuyển mức.</div></div>'
-        )
-        st.markdown(
-            f'<div class="g"><div class="ph"><span>Nhật ký diễn biến</span><small>{len(events)} mốc</small></div>{log}</div>',
-            unsafe_allow_html=True,
-        )
-
-    # ---- Cột phải
+    # ---- Cột phải (mỗi khối cách nhau đúng 14px trong một luồng flex dọc duy nhất)
     with st.container(key="colR"):
         with st.container(key="g_cat"):
             st.radio(
@@ -906,19 +927,8 @@ def monitor():
                 key="cat",
                 label_visibility="collapsed",
             )
-        st.markdown('<div class="mg">' + "".join(cs) + "</div>", unsafe_allow_html=True)
         lo_, mi_, hi_ = (int(x) for x in CN[t])
         tot = NC * NC
-        st.markdown(
-            f'<div class="g"><div class="ph"><span>Phân bố {tot} ô lưới địa hình</span><small>Giờ {hh(t)}</small></div>'
-            f'<div class="stk"><b style="width:{100 * lo_ / tot:.1f}%;background:{LO}"></b>'
-            f'<b style="width:{100 * mi_ / tot:.1f}%;background:{MI}"></b>'
-            f'<b style="width:{100 * hi_ / tot:.1f}%;background:{HI}"></b></div>'
-            f'<div class="lg2"><span><i style="background:{LO}"></i>Thấp {lo_}</span>'
-            f'<span><i style="background:{MI}"></i>Trung bình {mi_}</span>'
-            f'<span><i style="background:{HI}"></i>Cao {hi_}</span></div></div>',
-            unsafe_allow_html=True,
-        )
         rows = ""
         for i in np.argsort(-S[t])[:3]:
             sc, dl = float(S[t, i]), float(S[t, i] - S[prev, i])
@@ -930,8 +940,18 @@ def monitor():
                 f'<td class="dl {"up" if dl > 0.0005 else ""}">{sg}{vn(dl)}</td></tr>'
             )
         st.markdown(
+            f'<div style="display:flex;flex-direction:column;gap:14px">'
+            f'<div class="mg">{"".join(cs)}</div>'
+            f'<div class="g"><div class="ph"><span>Phân bố {tot} ô lưới địa hình</span><small>Giờ {hh(t)}</small></div>'
+            f'<div class="stk"><b style="width:{100 * lo_ / tot:.1f}%;background:{LO}"></b>'
+            f'<b style="width:{100 * mi_ / tot:.1f}%;background:{MI}"></b>'
+            f'<b style="width:{100 * hi_ / tot:.1f}%;background:{HI}"></b></div>'
+            f'<div class="lg2"><span><i style="background:{LO}"></i>Thấp {lo_}</span>'
+            f'<span><i style="background:{MI}"></i>Trung bình {mi_}</span>'
+            f'<span><i style="background:{HI}"></i>Cao {hi_}</span></div></div>'
             f'<div class="g"><div class="ph"><span>Trọng điểm nguy cơ cao nhất</span><small>So với giờ trước</small></div>'
-            f'<table class="rk">{rows}</table></div>',
+            f'<table class="rk">{rows}</table></div>'
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -950,7 +970,7 @@ def monitor():
         unsafe_allow_html=True,
     )
 
-    # ---- Thanh điều hướng góc trên bên trái (Tối giản, không icon AI)
+    # ---- Thanh điều hướng góc trên bên trái
     with st.container(key="g_nav"):
         nv1, nv2, nv3, nv4 = st.columns(4, gap="small")
         with nv1:
@@ -962,12 +982,12 @@ def monitor():
             if st.button("Hồ sơ lịch sử", key="nav_hist"):
                 _navigate_to("app/pages/3_Lich_Su_Sat_Lo.py")
         with nv4:
-            if st.button("Đánh giá mô hình", key="nav_ai"):
+            if st.button("Đánh giá AI", key="nav_ai"):
                 _navigate_to("app/pages/2_AI_Evaluation.py")
 
     # ---- Nút điều chỉnh kịch bản góc trên bên phải
     with st.container(key="g_ctrl"):
-        with st.popover("Thiết lập kịch bản ▾"):
+        with st.popover("Thiết lập kịch bản"):
             st.selectbox(
                 "Mô hình dự báo",
                 options=list(MODEL_OPTIONS.keys()),
@@ -984,7 +1004,7 @@ def monitor():
 
     if ss.view != "3D":
         with st.container(key="g_mapmode"):
-            with st.popover("Lớp nền ▾"):
+            with st.popover("Nền bản đồ"):
                 for base_option in BASEMAPS:
                     if st.button(
                         base_option,
@@ -995,7 +1015,7 @@ def monitor():
                         ss.basemap = base_option
                         st.rerun(scope="fragment")
 
-    # ---- Nút chuyển đổi 3D / Bản đồ (nằm riêng ở dòng bottom: 116px)
+    # ---- Nút chuyển đổi 3D / Bản đồ
     with st.container(key="g_3d"):
         if st.button("3D", key="v3d", type="primary" if ss.view == "3D" else "secondary"):
             ss.view = "3D"
@@ -1005,9 +1025,9 @@ def monitor():
             ss.view = "Bản đồ"
             st.rerun(scope="fragment")
 
-    # ---- Thanh thời gian dạng viên ở đáy (bottom: 52px)
+    # ---- Thanh thời gian dạng viên ở đáy (cột nút Phát lại rộng 92px cố định, không bao giờ bị cắt thành "Phát ...")
     with st.container(key="g_time"):
-        ta, tb, tc, td = st.columns([1.15, 1.1, 4.9, 1.35], gap="small", vertical_alignment="center")
+        ta, tb, tc, td = st.columns([1.45, 1.05, 4.3, 1.35], gap="small", vertical_alignment="center")
         with ta:
             finished = t >= HOURS
             play_label = "Tạm dừng" if ss.play else ("Phát lại" if finished else "Phát")
