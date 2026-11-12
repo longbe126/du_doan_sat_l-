@@ -17,7 +17,6 @@ if __name__ == "__main__" and (not getattr(st, "runtime", None) or not st.runtim
 
 st.set_page_config(
     page_title="Trung tâm giám sát nguy cơ sạt lở đất",
-    page_icon="⛰️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -25,9 +24,9 @@ st.session_state["_root_navigation"] = True
 
 page = st.navigation(
     [
-        st.Page("app/main.py", title="Tổng quan", icon=":material/landscape:", default=True),
-        st.Page("app/pages/3_Lich_Su_Sat_Lo.py", title="Lịch sử sạt lở", icon=":material/history:"),
-        st.Page("app/pages/2_AI_Evaluation.py", title="Đánh giá AI", icon=":material/analytics:"),
+        st.Page("app/main.py", title="Giám sát 3D", default=True),
+        st.Page("app/pages/3_Lich_Su_Sat_Lo.py", title="Hồ sơ lịch sử"),
+        st.Page("app/pages/2_AI_Evaluation.py", title="Đánh giá mô hình"),
     ],
     position="top",
 )

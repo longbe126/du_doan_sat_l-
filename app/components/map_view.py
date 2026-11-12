@@ -26,7 +26,7 @@ _MAP_LAYOUT_KEY = "map" if _HAS_MAP_V7 else "mapbox"
 def _smooth(a: np.ndarray, passes: int = 2) -> np.ndarray:
     for _ in range(passes):
         p = np.pad(a, 1, mode="edge")
-        a = sum(p[i:i + a.shape[0], j:j + a.shape[1]] for i in range(3) for j in range(3)) / 9
+        a = sum(p[i : i + a.shape[0], j : j + a.shape[1]] for i in range(3) for j in range(3)) / 9
     return a
 
 
@@ -57,7 +57,7 @@ def hillshade_uri(base: dict) -> str:
     e = _smooth(elev, 2)
     y_m = (lat - lat[0]) * 111_000.0
     x_m = (lon - lon[0]) * 111_000.0 * np.cos(np.radians(lat.mean()))
-    gy, gx = np.gradient(e * 2.2, y_m, x_m)  # gy: hướng Bắc, gx: hướng Đông
+    gy, gx = np.gradient(e * 2.2, y_m, x_m)
     nx, ny, nz = -gx, -gy, np.ones_like(gx)
     norm = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2)
     az, alt = np.radians(315), np.radians(42)
@@ -67,9 +67,9 @@ def hillshade_uri(base: dict) -> str:
     shade = np.clip((shade - lo_) / max(hi_ - lo_, 1e-6), 0, 1)
     height = (e - e.min()) / max(e.max() - e.min(), 1e-6)
     k = 0.75 * shade + 0.25 * height
-    dark, bright = np.array([9, 20, 30]), np.array([84, 112, 130])
+    dark, bright = np.array([10, 14, 18]), np.array([68, 82, 96])
     rgb = (dark + (bright - dark) * k[..., None]).astype(np.uint8)
-    if lat[0] < lat[-1]:  # hàng 0 là phía Nam; ảnh cần phía Bắc ở trên cùng
+    if lat[0] < lat[-1]:
         rgb = rgb[::-1]
     img = Image.fromarray(rgb).resize((rgb.shape[1] * 6, rgb.shape[0] * 6), Image.BICUBIC)
     buf = io.BytesIO()
@@ -81,20 +81,20 @@ def hillshade_uri(base: dict) -> str:
 
 def _map_scale(thr):
     lo, hi = thr
-    a, b, c = "rgba(16,185,129,0.10)", "rgba(245,158,11,0.42)", "rgba(239,68,68,0.70)"
+    a, b, c = "rgba(76,195,138,0.10)", "rgba(229,169,60,0.38)", "rgba(232,93,86,0.65)"
     return [[0.0, a], [lo, a], [lo, b], [hi, b], [hi, c], [1.0, c]]
 
 
 def _ramp_stops(thr):
-    """Thang màu liên tục: xanh đậm, xanh lá, vàng, cam, đỏ. Mốc ngưỡng nằm ở vàng nhạt và cam."""
+    """Thang màu địa hình trầm tự nhiên: xám đá -> lục rêu trầm -> vàng đất -> cam trầm -> đỏ sẫm."""
     lo, hi = thr
     return [
-        (0.0, "#1b4d43"),
-        (lo * 0.5, "#2f7d62"),
-        (lo, "#8fb05a"),
-        ((lo + hi) / 2, "#e0a93a"),
-        (hi, "#e5693a"),
-        (1.0, "#d63a30"),
+        (0.0, "#192826"),
+        (lo * 0.55, "#2b4c43"),
+        (lo, "#6f8f52"),
+        ((lo + hi) / 2, "#c68b39"),
+        (hi, "#c9533b"),
+        (1.0, "#a82926"),
     ]
 
 
@@ -105,7 +105,7 @@ def _terrain_scale(thr):
 def _cell_scale(thr):
     """Ô lưới chỉ tô nhẹ từ mức Trung bình trở lên, mức Thấp để trong suốt cho nhìn thấy bản đồ nhiệt bên dưới."""
     lo, hi = thr
-    z, a, r = "rgba(0,0,0,0)", "rgba(245,185,66,0.22)", "rgba(255,90,82,0.34)"
+    z, a, r = "rgba(0,0,0,0)", "rgba(229,169,60,0.20)", "rgba(232,93,86,0.32)"
     return [[0.0, z], [lo, z], [lo, a], [hi, a], [hi, r], [1.0, r]]
 
 
@@ -123,7 +123,7 @@ def risk_heat_uri(base: dict, risk, thr) -> str:
         return _HEAT_CACHE[key]
     stops = _ramp_stops(thr)
     xs = [s[0] for s in stops]
-    cols = np.array([[int(c[i:i + 2], 16) for i in (1, 3, 5)] for _, c in stops], float)
+    cols = np.array([[int(c[i : i + 2], 16) for i in (1, 3, 5)] for _, c in stops], float)
     rgb = np.stack([np.interp(r, xs, cols[:, k]) for k in range(3)], -1).astype(np.uint8)
     if lat[0] < lat[-1]:
         rgb = rgb[::-1]
@@ -183,7 +183,7 @@ def render_2d_workspace(
                 showscale=False,
                 marker_opacity=1,
                 marker_line_width=0.3,
-                marker_line_color="rgba(160,190,210,0.18)",
+                marker_line_color="rgba(255,255,255,0.12)",
                 hovertemplate="Điểm nguy cơ của ô: %{z:.2f}<extra></extra>",
             )
         )
@@ -192,14 +192,13 @@ def render_2d_workspace(
         ev = base["events"]
         locs, raw_names = _resolve_event_locations(ev, df)
 
-        # Đặt tên xã gốc ở index 5 để khi người dùng click điểm lịch sử, hệ thống chọn đúng xã đó mà không bị IndexError
         fig.add_trace(
             _ScatterMap(
                 lat=ev["lat"],
                 lon=ev["lon"],
                 mode="markers",
                 name="hist-events",
-                marker=dict(size=8, color="#f4f7fb", opacity=1.0),
+                marker=dict(size=7.5, color="#d8dee9", opacity=0.9),
                 customdata=np.column_stack([
                     ev["id"],
                     locs,
@@ -210,10 +209,10 @@ def render_2d_workspace(
                 ]),
                 hovertemplate=(
                     "<b>Sạt lở lịch sử [%{customdata[0]}]</b><br>"
-                    "📍 <b>Địa điểm:</b> %{customdata[1]}<br>"
-                    "⚠️ <b>Nguyên nhân:</b> %{customdata[2]}<br>"
-                    "📅 <b>Ngày xảy ra:</b> %{customdata[3]}<br>"
-                    "⛰️ <b>Độ cao:</b> %{customdata[4]} m<extra></extra>"
+                    "Địa điểm: %{customdata[1]}<br>"
+                    "Nguyên nhân: %{customdata[2]}<br>"
+                    "Ngày xảy ra: %{customdata[3]}<br>"
+                    "Độ cao: %{customdata[4]} m<extra></extra>"
                 ),
             )
         )
@@ -224,7 +223,7 @@ def render_2d_workspace(
                 lat=df["lat"],
                 lon=df["lon"],
                 mode="markers",
-                marker=dict(size=21, color=C["bg"]),
+                marker=dict(size=20, color=C["bg"]),
                 customdata=df[["score", "rain", "slope", "elev", "code", "name"]],
                 hoverinfo="skip",
             )
@@ -236,10 +235,10 @@ def render_2d_workspace(
                     lon=[row.lon],
                     mode="markers+text",
                     name="area-markers",
-                    marker=dict(size=14, color=str(RISK_COLOR[row.level])),
+                    marker=dict(size=13, color=str(RISK_COLOR[row.level])),
                     text=[row.name],
                     textposition="top center",
-                    textfont=dict(size=11, color="#e8f0f5"),
+                    textfont=dict(size=11, color="#eceef2"),
                     customdata=[[row.score, row.rain, row.slope, row.elev, row.code, row.name]],
                     hovertemplate=(
                         "<b>%{text}</b> [%{customdata[4]}]<br>"
@@ -259,7 +258,7 @@ def render_2d_workspace(
                     lat=[sel["lat"]],
                     lon=[sel["lon"]],
                     mode="markers",
-                    marker=dict(size=34, color="rgba(14, 165, 233, 0.40)"),
+                    marker=dict(size=32, color="rgba(200, 220, 112, 0.28)"),
                     customdata=sel_custom,
                     hoverinfo="skip",
                 )
@@ -269,7 +268,7 @@ def render_2d_workspace(
                     lat=[sel["lat"]],
                     lon=[sel["lon"]],
                     mode="markers",
-                    marker=dict(size=23, color="rgba(56, 189, 248, 0.85)"),
+                    marker=dict(size=21, color="rgba(200, 220, 112, 0.78)"),
                     customdata=sel_custom,
                     hoverinfo="skip",
                 )
@@ -279,7 +278,7 @@ def render_2d_workspace(
                     lat=[sel["lat"]],
                     lon=[sel["lon"]],
                     mode="markers",
-                    marker=dict(size=14, color=RISK_COLOR[sel["level"]]),
+                    marker=dict(size=13, color=RISK_COLOR[sel["level"]]),
                     customdata=sel_custom,
                     hoverinfo="skip",
                 )
@@ -330,7 +329,7 @@ def render_2d_workspace(
                 sourcetype="image",
                 source=risk_heat_uri(base, risk_field, thr),
                 below="traces",
-                opacity=0.72,
+                opacity=0.68,
                 coordinates=[[west, north], [east, north], [east, south], [west, south]],
             )
         )
@@ -376,14 +375,14 @@ def render_3d_terrain(
             cmax=1,
             colorscale=_terrain_scale(thr),
             showscale=False,
-            lighting=dict(ambient=0.65, diffuse=0.85, roughness=0.7, specular=0.08, fresnel=0.15),
+            lighting=dict(ambient=0.62, diffuse=0.82, roughness=0.75, specular=0.06, fresnel=0.12),
             contours=dict(
                 z=dict(
                     show=True,
                     start=0,
                     end=float(np.ceil(elev.max() / 100) * 100),
-                    size=250,
-                    color="rgba(226,232,240,0.16)",
+                    size=260,
+                    color="rgba(255,255,255,0.09)",
                     width=1,
                 )
             ),
@@ -398,7 +397,6 @@ def render_3d_terrain(
         ev = base["events"]
         locs, raw_names = _resolve_event_locations(ev, df)
 
-        # Đặt raw_names ở index 0 để trên 3D khi click vào điểm lịch sử cũng chọn đúng xã tương ứng
         fig.add_trace(
             go.Scatter3d(
                 x=ev["lon"],
@@ -406,7 +404,7 @@ def render_3d_terrain(
                 z=_sample(base, elev, ev["lat"], ev["lon"]) + 25,
                 mode="markers",
                 name="hist-events-3d",
-                marker=dict(size=5.5, color="#ffffff", opacity=1.0),
+                marker=dict(size=4.5, color="rgba(235,238,245,0.85)", opacity=0.92),
                 customdata=np.column_stack([
                     raw_names,
                     ev["id"],
@@ -417,16 +415,16 @@ def render_3d_terrain(
                 ]),
                 hovertemplate=(
                     "<b>Sạt lở lịch sử [%{customdata[1]}]</b><br>"
-                    "📍 <b>Địa điểm:</b> %{customdata[2]}<br>"
-                    "⚠️ <b>Nguyên nhân:</b> %{customdata[3]}<br>"
-                    "📅 <b>Ngày xảy ra:</b> %{customdata[4]}<br>"
-                    "⛰️ <b>Độ cao:</b> %{customdata[5]} m<extra></extra>"
+                    "Địa điểm: %{customdata[2]}<br>"
+                    "Nguyên nhân: %{customdata[3]}<br>"
+                    "Ngày xảy ra: %{customdata[4]}<br>"
+                    "Độ cao: %{customdata[5]} m<extra></extra>"
                 ),
             )
         )
 
     if show_areas:
-        zs = _sample(base, elev, df["lat"], df["lon"]) + 40
+        zs = _sample(base, elev, df["lat"], df["lon"]) + 42
         fig.add_trace(
             go.Scatter3d(
                 x=df["lon"],
@@ -436,11 +434,11 @@ def render_3d_terrain(
                 name="area-markers-3d",
                 text=df["name"],
                 textposition="top center",
-                textfont=dict(size=11, color="#f1f5f9", family="Be Vietnam Pro, sans-serif"),
+                textfont=dict(size=10.5, color="rgba(241,245,249,0.92)", family="Be Vietnam Pro, sans-serif"),
                 marker=dict(
-                    size=6.5,
+                    size=6,
                     color=[RISK_COLOR[l] for l in df["level"]],
-                    line=dict(color="#ffffff", width=1.5),
+                    line=dict(color="rgba(255,255,255,0.85)", width=1.2),
                 ),
                 customdata=np.column_stack([
                     df["name"],
@@ -470,10 +468,10 @@ def render_3d_terrain(
             if r.level == "Cao":
                 hx += [r.lon, r.lon, None]
                 hy += [r.lat, r.lat, None]
-                hz += [z0, z0 + 520, None]
+                hz += [z0, z0 + 500, None]
                 head_x.append(r.lon)
                 head_y.append(r.lat)
-                head_z.append(z0 + 520)
+                head_z.append(z0 + 500)
                 head_names.append([r.name])
         if hx:
             fig.add_trace(
@@ -482,7 +480,7 @@ def render_3d_terrain(
                     y=hy,
                     z=hz,
                     mode="lines",
-                    line=dict(color="#ef4444", width=5),
+                    line=dict(color="#e85d56", width=4.5),
                     hoverinfo="skip",
                 )
             )
@@ -493,23 +491,23 @@ def render_3d_terrain(
                     z=head_z,
                     mode="markers",
                     customdata=head_names,
-                    marker=dict(size=7, color="#ef4444", line=dict(color="#ffffff", width=1.5)),
+                    marker=dict(size=6.5, color="#e85d56", line=dict(color="#ffffff", width=1.2)),
                     hoverinfo="skip",
                 )
             )
 
         if selected_area and selected_area in df["name"].values:
             sel = df[df["name"] == selected_area].iloc[0]
-            sel_z = float(_sample(base, elev, [sel["lat"]], [sel["lon"]])[0]) + 40
+            sel_z = float(_sample(base, elev, [sel["lat"]], [sel["lon"]])[0]) + 42
             fig.add_trace(
                 go.Scatter3d(
                     x=[sel["lon"], sel["lon"]],
                     y=[sel["lat"], sel["lat"]],
-                    z=[sel_z, sel_z + 650],
+                    z=[sel_z, sel_z + 620],
                     mode="lines+markers",
                     customdata=[[sel["name"]], [sel["name"]]],
-                    line=dict(color="#38bdf8", width=7),
-                    marker=dict(size=[6, 11], color=["#38bdf8", "#ffffff"]),
+                    line=dict(color="#c8dc70", width=6),
+                    marker=dict(size=[5.5, 10], color=["#c8dc70", "#ffffff"]),
                     hoverinfo="skip",
                 )
             )
@@ -527,7 +525,7 @@ def render_3d_terrain(
             zaxis=dict(visible=False, showgrid=False, zeroline=False, showbackground=False),
             aspectmode="manual",
             aspectratio=dict(x=1.35, y=1.35, z=0.38),
-            camera=dict(eye=dict(x=1.1, y=-1.35, z=0.8), center=dict(x=0, y=0, z=-0.1)),
+            camera=dict(eye=dict(x=1.15, y=-1.38, z=0.82), center=dict(x=0, y=0, z=-0.12)),
             bgcolor="rgba(0,0,0,0)",
         ),
     )
