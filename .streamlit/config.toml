@@ -1,0 +1,15 @@
+[theme]
+base = "dark"
+primaryColor = "#d4e88a"
+backgroundColor = "#07080b"
+secondaryBackgroundColor = "#16181c"
+textColor = "#e8e9ec"
+
+[server]
+runOnSave = true
+
+[client]
+showSidebarNavigation = false
+
+[browser]
+gatherUsageStats = false

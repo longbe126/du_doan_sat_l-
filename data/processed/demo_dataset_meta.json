@@ -1,0 +1,8 @@
+{
+  "generator": "scripts/generate_demo_data.py",
+  "seed": 42,
+  "n_rows": 5000,
+  "noise_sd": 0.8,
+  "positive_rate": 0.5022,
+  "ceiling_roc_auc": 0.8063005699790349
+}

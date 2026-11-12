@@ -1,0 +1,13 @@
+numpy
+pandas
+geopandas
+rasterio
+scikit-learn
+xgboost
+joblib
+Pillow
+plotly
+streamlit
+scipy
+fastapi
+uvicorn
